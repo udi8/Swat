@@ -232,13 +232,41 @@ class PluginSwatForm extends CommonDBTM {
     }
 
     /**
-     * Get forms for current user's dashboard
+     * Get forms for current user's dashboard.
+     * When include_team=true, uses GLPI groups to find team members.
      */
     public static function getDashboardForms(int $users_id, bool $include_team = false): array {
         global $DB;
 
         $where = ['is_deleted' => 0];
-        if (!$include_team) {
+
+        if ($include_team) {
+            // Find all groups the current user belongs to
+            $group_ids = [];
+            foreach ($DB->request([
+                'SELECT' => ['groups_id'],
+                'FROM'   => 'glpi_groups_users',
+                'WHERE'  => ['users_id' => $users_id],
+            ]) as $gr) {
+                $group_ids[] = (int)$gr['groups_id'];
+            }
+
+            if (!empty($group_ids)) {
+                // Find all users in those groups
+                $team_user_ids = [$users_id];
+                foreach ($DB->request([
+                    'SELECT' => ['users_id'],
+                    'FROM'   => 'glpi_groups_users',
+                    'WHERE'  => ['groups_id' => $group_ids],
+                ]) as $tu) {
+                    $team_user_ids[] = (int)$tu['users_id'];
+                }
+                $where['users_id_creator'] = array_unique($team_user_ids);
+            } else {
+                // No groups → show only own forms
+                $where['users_id_creator'] = $users_id;
+            }
+        } else {
             $where['users_id_creator'] = $users_id;
         }
 
@@ -247,7 +275,7 @@ class PluginSwatForm extends CommonDBTM {
             'FROM'  => 'glpi_plugin_swat_forms',
             'WHERE' => $where,
             'ORDER' => 'date_creation DESC',
-            'LIMIT' => 50,
+            'LIMIT' => 100,
         ]) as $row) {
             $row['cp_name']      = getUserName($row['users_id_cp']);
             $row['creator_name'] = getUserName($row['users_id_creator']);

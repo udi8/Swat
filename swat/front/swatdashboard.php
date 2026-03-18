@@ -19,18 +19,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['swat_action'])) {
     if ($fid && Session::haveRight('plugin_swat_form', UPDATE)) {
         switch ($_POST['swat_action']) {
             case 'set_status':
-                $new_status = in_array($_POST['status'] ?? '', ['submitted','closed','archived'])
+                $new_status = in_array($_POST['status'] ?? '', ['submitted','archived'])
                     ? $_POST['status'] : 'submitted';
                 $DB->update('glpi_plugin_swat_forms', ['status' => $new_status], ['id' => $fid]);
                 break;
         }
     }
-    $tab = $_POST['tab'] ?? 'mine';
-    Html::redirect('swatdashboard.php?tab=' . $tab);
+    $tab    = $_POST['tab']    ?? 'mine';
+    $subtab = $_POST['subtab'] ?? 'active';
+    Html::redirect('swatdashboard.php?tab=' . $tab . '&subtab=' . $subtab);
 }
 
 // ── Tab: my / team ────────────────────────────────────────────────────────────
-$tab = $_GET['tab'] ?? 'mine';  // 'mine' or 'team'
+$tab    = $_GET['tab']    ?? 'mine';   // 'mine' or 'team'
+$subtab = $_GET['subtab'] ?? 'active'; // 'active' or 'archive'
 
 $my_forms   = PluginSwatForm::getDashboardForms($current_user_id, false);
 $team_forms = PluginSwatForm::getDashboardForms($current_user_id, true);
@@ -48,12 +50,35 @@ function apply_filters(array $forms, string $status, string $permit): array {
 }
 
 $show_forms = $tab === 'team' ? $team_forms : $my_forms;
-$filtered   = array_values(apply_filters($show_forms, $filter_status, $filter_permit));
+
+// Sub-tab filtering (active / archive) - only when no explicit status filter
+function apply_subtab_filter(array $forms, string $subtab): array {
+    if ($subtab === 'archive') {
+        return array_values(array_filter($forms, fn($f) => in_array($f['status'], ['archived', 'closed'])));
+    }
+    // active = submitted
+    return array_values(array_filter($forms, fn($f) => $f['status'] === 'submitted'));
+}
+
+// Counts for subtab badges
+$show_active_forms  = apply_subtab_filter($show_forms, 'active');
+$show_archive_forms = apply_subtab_filter($show_forms, 'archive');
+$active_count  = count($show_active_forms);
+$archive_count = count($show_archive_forms);
+
+// Apply subtab filter to shown forms (unless status filter is set manually)
+if (!$filter_status) {
+    $subtab_filtered = apply_subtab_filter($show_forms, $subtab);
+} else {
+    $subtab_filtered = $show_forms;
+}
+
+$filtered = array_values(apply_filters($subtab_filtered, $filter_status, $filter_permit));
 
 // ── Stats ─────────────────────────────────────────────────────────────────────
-$my_open   = count(array_filter($my_forms,   fn($f) => $f['status'] === 'submitted'));
-$my_closed = count(array_filter($my_forms,   fn($f) => $f['status'] === 'closed'));
-$tm_open   = count(array_filter($team_forms, fn($f) => $f['status'] === 'submitted'));
+$my_active  = count(array_filter($my_forms, fn($f) => $f['status'] === 'submitted'));
+$my_archive = count(array_filter($my_forms, fn($f) => in_array($f['status'], ['archived', 'closed'])));
+$tm_active  = count(array_filter($team_forms, fn($f) => $f['status'] === 'submitted'));
 
 // ── Permits grouped ───────────────────────────────────────────────────────────
 $permit_map = [];
@@ -97,13 +122,13 @@ $root = Plugin::getWebDir('swat');
     </div>
     <div class="swat-stat-box <?= $filter_status==='submitted'?'active':'' ?>"
          onclick="setFilter('status','submitted')" style="cursor:pointer;border-color:#f59e0b;">
-        <div class="stat-num" style="color:#f59e0b;"><?= $my_open ?></div>
+        <div class="stat-num" style="color:#f59e0b;"><?= $my_active ?></div>
         <div class="stat-label">Active / פעילים</div>
     </div>
-    <div class="swat-stat-box <?= $filter_status==='closed'?'active':'' ?>"
-         onclick="setFilter('status','closed')" style="cursor:pointer;border-color:#10b981;">
-        <div class="stat-num" style="color:#10b981;"><?= $my_closed ?></div>
-        <div class="stat-label">Closed / סגורים</div>
+    <div class="swat-stat-box <?= $filter_status==='archived'?'active':'' ?>"
+         onclick="setFilter('status','archived')" style="cursor:pointer;border-color:#6b7280;">
+        <div class="stat-num" style="color:#6b7280;"><?= $my_archive ?></div>
+        <div class="stat-label">Archive / ארכיון</div>
     </div>
     <div class="swat-stat-box" style="border-color:var(--swat-teal);">
         <div class="stat-num"><?= count($permit_map) ?></div>
@@ -112,16 +137,32 @@ $root = Plugin::getWebDir('swat');
 </div>
 
 <!-- ── Tabs: Mine / Team ─────────────────────────────────────────────── -->
-<div class="swat-tabs" style="display:flex;gap:0;margin-bottom:16px;border-bottom:2px solid var(--swat-teal);">
-    <a href="?tab=mine<?= $filter_status?"&status=$filter_status":'' ?>"
+<div class="swat-tabs" style="display:flex;gap:0;margin-bottom:0;border-bottom:2px solid var(--swat-teal);">
+    <a href="?tab=mine&subtab=<?= $subtab ?><?= $filter_permit?"&permit=".urlencode($filter_permit):'' ?>"
        class="swat-tab <?= $tab==='mine'?'active':'' ?>">
         <i class="fas fa-user"></i> My Forms (<?= count($my_forms) ?>)
     </a>
-    <a href="?tab=team<?= $filter_status?"&status=$filter_status":'' ?>"
+    <a href="?tab=team&subtab=<?= $subtab ?><?= $filter_permit?"&permit=".urlencode($filter_permit):'' ?>"
        class="swat-tab <?= $tab==='team'?'active':'' ?>">
         <i class="fas fa-users"></i> Team Forms (<?= count($team_forms) ?>)
     </a>
 </div>
+
+<!-- ── Sub-tabs: Active / Archive ────────────────────────────────────── -->
+<?php if (!$filter_status): ?>
+<div class="swat-subtabs" style="display:flex;gap:0;margin-bottom:16px;border-bottom:2px solid #e5e7eb;">
+    <a href="?tab=<?= $tab ?>&subtab=active<?= $filter_permit?"&permit=".urlencode($filter_permit):'' ?>"
+       class="swat-subtab <?= $subtab==='active'?'active':'' ?>">
+        <i class="fas fa-bolt"></i> Active / פעילים (<?= $active_count ?>)
+    </a>
+    <a href="?tab=<?= $tab ?>&subtab=archive<?= $filter_permit?"&permit=".urlencode($filter_permit):'' ?>"
+       class="swat-subtab <?= $subtab==='archive'?'active':'' ?>">
+        <i class="fas fa-archive"></i> Archive / ארכיון (<?= $archive_count ?>)
+    </a>
+</div>
+<?php else: ?>
+<div style="margin-bottom:16px;"></div>
+<?php endif; ?>
 
 <!-- ── Active filters strip ──────────────────────────────────────────── -->
 <?php if ($filter_status || $filter_permit): ?>
@@ -130,13 +171,13 @@ $root = Plugin::getWebDir('swat');
     <?php if ($filter_status): ?>
     <span class="swat-status-badge swat-status-<?= $filter_status ?>">
         <?= $filter_status ?>
-        <a href="?tab=<?= $tab ?>" style="color:inherit;margin-left:4px;">✕</a>
+        <a href="?tab=<?= $tab ?>&subtab=<?= $subtab ?>" style="color:inherit;margin-left:4px;">✕</a>
     </span>
     <?php endif; ?>
     <?php if ($filter_permit): ?>
     <span class="swat-status-badge swat-status-submitted">
         Permit: <?= htmlspecialchars($filter_permit) ?>
-        <a href="?tab=<?= $tab ?><?= $filter_status?"&status=$filter_status":'' ?>" style="color:inherit;margin-left:4px;">✕</a>
+        <a href="?tab=<?= $tab ?>&subtab=<?= $subtab ?><?= $filter_status?"&status=$filter_status":'' ?>" style="color:inherit;margin-left:4px;">✕</a>
     </span>
     <?php endif; ?>
 </div>
@@ -150,30 +191,45 @@ $root = Plugin::getWebDir('swat');
         <span class="he">סקירת פרמיטים</span>
     </div>
     <div class="swat-card-body" style="padding:8px;">
+        <div style="padding:8px 12px;">
+            <input type="text" id="swat-permit-search"
+                   placeholder="🔍 Search permit / חיפוש פרמיט..."
+                   class="swat-input" style="max-width:320px;"
+                   oninput="filterPermitRows(this.value)">
+        </div>
         <?php foreach ($permit_map as $permit => $pforms): ?>
         <?php
-            $p_open   = count(array_filter($pforms, fn($f)=>$f['status']==='submitted'));
-            $p_closed = count(array_filter($pforms, fn($f)=>$f['status']==='closed'));
+            $p_active  = count(array_filter($pforms, fn($f)=>$f['status']==='submitted'));
+            $p_archive = count(array_filter($pforms, fn($f)=>in_array($f['status'],['archived','closed'])));
         ?>
-        <div class="swat-permit-row" style="
+        <div class="swat-permit-row" data-permit="<?= htmlspecialchars($permit) ?>" style="
             display:flex;align-items:center;gap:12px;
             padding:10px 14px;margin-bottom:6px;
             background:var(--swat-bg);border-radius:8px;
-            border-left:4px solid var(--swat-teal);cursor:pointer;"
-             onclick="setFilter('permit',<?= json_encode($permit === '—' ? '' : $permit) ?>)">
-            <div style="font-weight:700;color:var(--swat-teal);min-width:100px;">
+            border-left:4px solid var(--swat-teal);">
+            <div style="font-weight:700;color:var(--swat-teal);min-width:100px;cursor:pointer;"
+                 onclick="setFilter('permit',<?= json_encode($permit === '—' ? '' : $permit) ?>)">
                 <i class="fas fa-hashtag"></i> <?= htmlspecialchars($permit) ?>
             </div>
-            <div style="flex:1;font-size:0.85rem;color:#555;">
+            <div style="flex:1;font-size:0.85rem;color:#555;cursor:pointer;"
+                 onclick="setFilter('permit',<?= json_encode($permit === '—' ? '' : $permit) ?>)">
                 <?= count($pforms) ?> form<?= count($pforms)!==1?'s':'' ?>
             </div>
             <span class="swat-status-badge swat-status-submitted" style="font-size:0.75rem;">
-                <?= $p_open ?> active
+                <?= $p_active ?> active
             </span>
-            <span class="swat-status-badge swat-status-closed" style="font-size:0.75rem;">
-                <?= $p_closed ?> closed
+            <span class="swat-status-badge swat-status-archived" style="font-size:0.75rem;">
+                <?= $p_archive ?> archived
             </span>
-            <i class="fas fa-chevron-right" style="color:#ccc;"></i>
+            <?php if ($permit !== '—'): ?>
+            <a href="swatform.php?action=new&permit=<?= urlencode($permit) ?>"
+               class="swat-btn swat-btn-secondary" style="padding:3px 8px;font-size:0.75rem;"
+               title="New form for this permit">
+                <i class="fas fa-plus"></i>
+            </a>
+            <?php endif; ?>
+            <i class="fas fa-chevron-right" style="color:#ccc;cursor:pointer;"
+               onclick="setFilter('permit',<?= json_encode($permit === '—' ? '' : $permit) ?>)"></i>
         </div>
         <?php endforeach; ?>
         <?php if (empty($permit_map)): ?>
@@ -191,8 +247,10 @@ $root = Plugin::getWebDir('swat');
             Forms for Permit <strong><?= htmlspecialchars($filter_permit) ?></strong>
         <?php elseif ($filter_status): ?>
             <?= ucfirst($filter_status) ?> Forms
+        <?php elseif ($subtab === 'archive'): ?>
+            Archive / ארכיון
         <?php else: ?>
-            All Forms / כל הטפסים
+            Active Forms / טפסים פעילים
         <?php endif; ?>
         <span style="margin-left:auto;font-size:0.82rem;font-weight:400;color:#aaa;">
             <?= count($filtered) ?> form<?= count($filtered)!==1?'s':'' ?>
@@ -226,7 +284,7 @@ $root = Plugin::getWebDir('swat');
             <td data-label="Date"><?= htmlspecialchars($f['form_date'] ?? '') ?></td>
             <td data-label="Permit">
                 <?php if ($f['work_permit_ref']): ?>
-                <a href="?tab=<?= $tab ?>&permit=<?= urlencode($f['work_permit_ref']) ?>"
+                <a href="?tab=<?= $tab ?>&subtab=<?= $subtab ?>&permit=<?= urlencode($f['work_permit_ref']) ?>"
                    style="font-weight:600;color:var(--swat-teal);">
                     <?= htmlspecialchars($f['work_permit_ref']) ?>
                 </a>
@@ -242,12 +300,12 @@ $root = Plugin::getWebDir('swat');
                     <input type="hidden" name="form_id" value="<?= $f['id'] ?>">
                     <input type="hidden" name="swat_action" value="set_status">
                     <input type="hidden" name="tab" value="<?= htmlspecialchars($tab) ?>">
+                    <input type="hidden" name="subtab" value="<?= htmlspecialchars($subtab) ?>">
                     <select name="status" onchange="this.form.submit()"
                             class="swat-status-select swat-status-<?= $f['status'] ?>"
                             style="border:none;border-radius:4px;padding:3px 6px;font-size:0.78rem;font-weight:600;cursor:pointer;">
-                        <option value="submitted" <?= $f['status']==='submitted'?'selected':'' ?>>🟡 Active</option>
-                        <option value="closed"    <?= $f['status']==='closed'   ?'selected':'' ?>>🟢 Closed</option>
-                        <option value="archived"  <?= $f['status']==='archived' ?'selected':'' ?>>📦 Archived</option>
+                        <option value="submitted" <?= $f['status']==='submitted'?'selected':'' ?>>🟡 Active / פעיל</option>
+                        <option value="archived"  <?= in_array($f['status'],['archived','closed'])?'selected':'' ?>>📦 Archive / ארכיון</option>
                     </select>
                 </form>
             </td>
@@ -260,7 +318,7 @@ $root = Plugin::getWebDir('swat');
                    title="Edit"><i class="fas fa-edit"></i></a>
                 <a href="swatpdf.php?id=<?= $f['id'] ?>&lang=en"
                    class="swat-btn swat-btn-pdf" style="padding:4px 8px;font-size:0.78rem;"
-                   title="Download RTF"><i class="fas fa-file-word"></i></a>
+                   title="Download PDF"><i class="fas fa-file-word"></i></a>
             </td>
         </tr>
         <?php endforeach; ?>
@@ -289,6 +347,24 @@ $root = Plugin::getWebDir('swat');
     color: var(--swat-teal);
     border-bottom-color: var(--swat-teal);
 }
+.swat-subtab {
+    padding: 6px 16px;
+    font-size: 0.82rem;
+    font-weight: 500;
+    color: #888;
+    text-decoration: none;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+.swat-subtab:hover { color: var(--swat-teal); }
+.swat-subtab.active {
+    color: var(--swat-teal);
+    border-bottom-color: var(--swat-teal);
+    font-weight: 600;
+}
 .swat-stat-box { transition: all 0.2s; }
 .swat-stat-box:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,107,107,0.15); }
 .swat-stat-box.active { border-color: var(--swat-teal) !important; background: var(--swat-teal); }
@@ -296,8 +372,9 @@ $root = Plugin::getWebDir('swat');
 .swat-stat-box.active .stat-label { color: #fff !important; }
 .swat-status-select { background: transparent; }
 .swat-status-select.swat-status-submitted { background:#fef3c7;color:#92400e; }
-.swat-status-select.swat-status-closed    { background:#d1fae5;color:#065f46; }
 .swat-status-select.swat-status-archived  { background:#e5e7eb;color:#374151; }
+.swat-status-select.swat-status-closed    { background:#e5e7eb;color:#374151; }
+.swat-status-badge.swat-status-archived   { background:#e5e7eb;color:#374151; }
 </style>
 
 <script>
@@ -306,6 +383,14 @@ function setFilter(key, val) {
     if (val) url.searchParams.set(key, val);
     else url.searchParams.delete(key);
     window.location = url.toString();
+}
+
+function filterPermitRows(q) {
+    q = q.toLowerCase().trim();
+    document.querySelectorAll('.swat-permit-row[data-permit]').forEach(function(row) {
+        var perm = row.dataset.permit.toLowerCase();
+        row.style.display = (q === '' || perm.includes(q)) ? '' : 'none';
+    });
 }
 </script>
 

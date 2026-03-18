@@ -9,8 +9,9 @@ if (!Session::haveRight('plugin_swat_form', READ) && !Session::haveRight('config
     exit;
 }
 
-$action  = $_GET['action'] ?? 'new';
-$form_id = (int)($_GET['id'] ?? 0);
+$action         = $_GET['action'] ?? 'new';
+$form_id        = (int)($_GET['id'] ?? 0);
+$prefill_permit = htmlspecialchars($_GET['permit'] ?? '');
 $form    = null;
 
 if ($form_id > 0) {
@@ -165,7 +166,7 @@ $is_custom_cp = ($cp_id != $current_user_id || $cp_contact);
                         <span class="he">מספר אישור עבודה</span>
                     </div>
                     <input type="text" name="work_permit_ref" class="swat-input" required
-                           value="<?= htmlspecialchars($form_data['work_permit_ref'] ?? '') ?>"
+                           value="<?= htmlspecialchars($form_data['work_permit_ref'] ?? $prefill_permit) ?>"
                            <?= $is_view ? 'readonly' : '' ?>>
                 </div>
 
@@ -382,10 +383,7 @@ $is_custom_cp = ($cp_id != $current_user_id || $cp_contact);
                             <input type="hidden" class="hidden-display-name" name="participants[<?= $i ?>][display_name]" value="<?= $pName ?>">
                         </div>
                         <?php if (!$is_view): ?>
-                        <button type="button" onclick="
-                            const row = this.closest('.swat-participant-row');
-                            row.querySelectorAll('input').forEach(i => i.value = '');
-                        " style="background:none;border:none;color:#aaa;cursor:pointer;font-size:1rem;padding:0 4px;">✕</button>
+                        <button type="button" class="swat-part-clear" style="background:none;border:none;color:#aaa;cursor:pointer;font-size:1rem;padding:0 4px;line-height:1;">✕</button>
                         <?php endif; ?>
                     </div>
                     <?php endfor; ?>
@@ -590,6 +588,44 @@ $is_custom_cp = ($cp_id != $current_user_id || $cp_contact);
         </div>
     </div>
 
+    <!-- Section: Images (not in PDF) -->
+    <?php if (!$is_view): ?>
+    <div class="swat-card" id="swat-images-section">
+        <div class="swat-card-header">
+            <i class="fas fa-camera"></i> Site Photos (not included in PDF)
+            <span class="he">תמונות אתר (לא בPDF)</span>
+        </div>
+        <div class="swat-card-body">
+            <?php if ($form_id): ?>
+            <div id="swat-attachments-list" style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px;"></div>
+            <div>
+                <label class="swat-btn swat-btn-secondary" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
+                    <i class="fas fa-upload"></i> Upload Image / העלה תמונה
+                    <input type="file" id="swat-img-upload" accept="image/*" style="display:none;">
+                </label>
+                <span id="swat-upload-status" style="font-size:0.82rem;margin-left:10px;"></span>
+            </div>
+            <?php else: ?>
+            <div style="color:#888;font-size:0.85rem;">
+                <i class="fas fa-info-circle"></i> Save the form first to upload images / שמור את הטופס תחילה להעלאת תמונות
+            </div>
+            <?php endif; ?>
+        </div>
+    </div>
+    <?php elseif ($is_view): ?>
+    <!-- View mode: show images -->
+    <div class="swat-card" id="swat-images-section">
+        <div class="swat-card-header">
+            <i class="fas fa-camera"></i> Site Photos
+            <span class="he">תמונות אתר</span>
+        </div>
+        <div class="swat-card-body">
+            <div id="swat-attachments-list" style="display:flex;flex-wrap:wrap;gap:10px;"></div>
+            <div id="swat-no-photos" style="color:#aaa;font-size:0.85rem;display:none;">No photos attached / אין תמונות</div>
+        </div>
+    </div>
+    <?php endif; ?>
+
     <!-- Motto + Footer -->
     <div class="swat-motto-bar">
         <span class="he">אנחנו מתחילים עבודה רק אם זה בטוח ועוצרים באם לא</span>
@@ -643,6 +679,20 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // Re-attach our own listeners on the fresh clone
     var freshForm = document.getElementById('swat-main-form');
+
+    // Wire up existing .swat-part-clear buttons (PHP-rendered rows)
+    var partList = document.querySelector('.swat-participants-list');
+    if (partList) {
+        partList.querySelectorAll('.swat-part-clear').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                btn.closest('.swat-participant-row').remove();
+                partList.querySelectorAll('.swat-participant-row').forEach(function(r, i) {
+                    var num = r.querySelector('.swat-participant-num');
+                    if (num) num.textContent = (i+1) + '.';
+                });
+            });
+        });
+    }
 
     // Life Saving Rules - click to toggle
     document.querySelectorAll('.swat-lsr-item').forEach(function(item) {
@@ -714,6 +764,7 @@ document.addEventListener('DOMContentLoaded', function () {
             });
         });
     }
+    var addBtn = document.getElementById('swat-hc-add');
     if (addBtn) {
         addBtn.addEventListener('click', function() {
             var tbody = document.querySelector('#swat-hc-table tbody');
@@ -732,6 +783,78 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
 });
+
+// Image upload
+(function() {
+    var formId = <?= $form_id ?: 'null' ?>;
+    var root = '<?= $root ?>';
+    if (!formId) return;
+
+    function loadAttachments() {
+        fetch(root + '/ajax/get_attachments.php?form_id=' + formId)
+            .then(function(r){ return r.json(); })
+            .then(function(atts) {
+                var list = document.getElementById('swat-attachments-list');
+                var noP = document.getElementById('swat-no-photos');
+                if (!list) return;
+                list.innerHTML = '';
+                if (atts.length === 0 && noP) { noP.style.display = ''; return; }
+                if (noP) noP.style.display = 'none';
+                atts.forEach(function(att) {
+                    var div = document.createElement('div');
+                    div.style.cssText = 'position:relative;border:1px solid #ddd;border-radius:6px;overflow:hidden;width:120px;height:100px;';
+                    var img = document.createElement('img');
+                    img.src = root + '/front/view_attachment.php?id=' + att.id;
+                    img.style.cssText = 'width:100%;height:80px;object-fit:cover;display:block;';
+                    img.onclick = function(){ window.open(img.src,'_blank'); };
+                    img.style.cursor = 'pointer';
+                    var lbl = document.createElement('div');
+                    lbl.style.cssText = 'font-size:0.65rem;padding:2px 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:#f5f5f5;';
+                    lbl.textContent = att.filename;
+                    div.appendChild(img);
+                    div.appendChild(lbl);
+                    <?php if (!$is_view): ?>
+                    var del = document.createElement('button');
+                    del.textContent = '✕';
+                    del.style.cssText = 'position:absolute;top:2px;right:2px;background:rgba(0,0,0,0.5);color:#fff;border:none;border-radius:50%;width:18px;height:18px;font-size:0.65rem;cursor:pointer;line-height:1;padding:0;';
+                    del.onclick = function(){
+                        if (!confirm('Delete photo?')) return;
+                        var token = document.querySelector('input[name="_glpi_csrf_token"]').value;
+                        fetch(root + '/ajax/delete_attachment.php', {
+                            method:'POST',
+                            headers:{'Content-Type':'application/x-www-form-urlencoded'},
+                            body:'_glpi_csrf_token='+encodeURIComponent(token)+'&attachment_id='+att.id
+                        }).then(function(){ loadAttachments(); });
+                    };
+                    div.appendChild(del);
+                    <?php endif; ?>
+                    list.appendChild(div);
+                });
+            });
+    }
+    loadAttachments();
+
+    var upInput = document.getElementById('swat-img-upload');
+    if (upInput) {
+        upInput.addEventListener('change', function() {
+            if (!this.files[0]) return;
+            var status = document.getElementById('swat-upload-status');
+            status.textContent = 'Uploading...';
+            var fd = new FormData();
+            fd.append('image', this.files[0]);
+            fd.append('form_id', formId);
+            fd.append('_glpi_csrf_token', document.querySelector('input[name="_glpi_csrf_token"]').value);
+            fetch(root + '/ajax/upload_image.php', { method:'POST', body: fd })
+                .then(function(r){ return r.json(); })
+                .then(function(d){
+                    if (d.success) { status.textContent = '✓ Uploaded'; loadAttachments(); }
+                    else { status.textContent = '✗ ' + (d.error||'Failed'); }
+                    setTimeout(function(){ status.textContent = ''; }, 3000);
+                });
+            this.value = '';
+        });
+    }
+})();
 </script>
 
 <?php Html::footer(); ?>

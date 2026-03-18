@@ -152,7 +152,7 @@ $pdf->form_id = $fid;
 $pdf->SetCreator('SWAT Plugin');
 $pdf->SetTitle("SWAT Form #{$fid}");
 $pdf->SetMargins(10, 10, 10);
-$pdf->SetAutoPageBreak(true, 16);
+$pdf->SetAutoPageBreak(true, 12);
 $pdf->setPrintHeader(false);
 $pdf->SetFont('dejavusans', '', 8);
 if ($IS_HE) $pdf->setRTL(false); // We control RTL per cell
@@ -262,6 +262,16 @@ function cbx(TCPDF $p, float $x, float $y, float $sz, bool $checked): void {
     }
 }
 
+// Ensure space - add page if needed
+function ensureSpace(TCPDF $p, float $y, float $needed, float $pageH = 270): float {
+    if ($p->getPage() >= 3) return $y; // max 3 pages
+    if ($y + $needed > $pageH) {
+        $p->AddPage();
+        return 10;
+    }
+    return $y;
+}
+
 // Motto bar
 function mottoBar(TCPDF $p, float $x, float $y, float $w, bool $isHe): float {
     $h = 12;
@@ -337,7 +347,7 @@ $y+=$RH+2;
 
 // ── Section 2: Task Assessment ─────────────────────────────────────────────
 $y = sectionBar($pdf,$x0,$y,$W,$L['task_assess']);
-$hw=$W/2; $SH=7; $TH=18;
+$hw=$W/2; $SH=7; $TH=15;
 subhead($pdf,$x0,$y,$hw,$SH,$L['what_task'],$IS_HE);
 subhead($pdf,$x0+$hw,$y,$hw,$SH,$L['how_do'],$IS_HE);
 $y+=$SH;
@@ -352,6 +362,7 @@ textbox($pdf,$x0+$hw,$y,$hw,$TH,$form['task_detail']??'',$IS_HE);
 $y+=$TH+2;
 
 // ── Section 3: Life Saving Rules ───────────────────────────────────────────
+$y = ensureSpace($pdf,$y,52);
 $y = sectionBar($pdf,$x0,$y,$W,$L['lsr']);
 $n=count($LSR); $cw=$W/$n; $BXH=30; $ICH=16;
 foreach($LSR as $i=>[$key,$icon,$en_t,$he_t]){
@@ -387,6 +398,7 @@ foreach($LSR as $i=>[$key,$icon,$en_t,$he_t]){
 $y+=$BXH+2;
 
 // ── Section 4: Other Hazards ───────────────────────────────────────────────
+$y = ensureSpace($pdf,$y,80);
 $y = sectionBar($pdf,$x0,$y,$W,$L['other_haz']);
 $COLS=4; $hcw=$W/$COLS; $HH=10; $CBS=3.5;
 foreach(array_chunk($HAZARDS,$COLS) as $ri=>$row_items){
@@ -424,6 +436,7 @@ if($others){
 $y+=2;
 
 // ── Section 5: CP & Participants ───────────────────────────────────────────
+$y = ensureSpace($pdf,$y,80);
 $y = sectionBar($pdf,$x0,$y,$W,$L['cp_part']);
 $CPH=14;
 fc($pdf,224,240,240); dc($pdf,0,107,107); $pdf->SetLineWidth(0.6);
@@ -471,6 +484,7 @@ $pdf->Cell($W-26,7,"Form #{$fid}  |  Permit: ".($form['work_permit_ref']??'')
 $y+=14;
 
 // ── Section 6: Guiding Documents ──────────────────────────────────────────
+$y = ensureSpace($pdf,$y,40);
 $y = sectionBar($pdf,$x0,$y,$W,$L['guiding_docs']);
 $DC=3; $dcw=$W/$DC; $DH=12;
 foreach(array_chunk($DOCS,$DC) as $ri=>$row_items){
@@ -505,16 +519,8 @@ if($form['doc_other']??''){
 }
 $y+=2;
 
-// ── Section 7: Detailed Task ───────────────────────────────────────────────
-$y = sectionBar($pdf,$x0,$y,$W,$L['detail_task']);
-subhead($pdf,$x0,$y,$hw,7,$L['brief_desc'],$IS_HE);
-subhead($pdf,$x0+$hw,$y,$hw,7,$L['details'],$IS_HE);
-$y+=7;
-textbox($pdf,$x0,$y,$hw,24,$form['task_description']??'',$IS_HE);
-textbox($pdf,$x0+$hw,$y,$hw,24,$form['task_detail']??'',$IS_HE);
-$y+=26;
-
 // ── Section 8: Hazard & Controls ──────────────────────────────────────────
+$y = ensureSpace($pdf,$y,70);
 $y = sectionBar($pdf,$x0,$y,$W,$L['hc_title']);
 // PPE note
 fc($pdf,244,248,248); dc($pdf,184,206,206);
@@ -548,6 +554,7 @@ for($i=0;$i<$nrows;$i++){
 $y+=2;
 
 // ── Section 9: Task Refocus ────────────────────────────────────────────────
+$y = ensureSpace($pdf,$y,30);
 $y = sectionBar($pdf,$x0,$y,$W,$L['refocus']);
 $rfw=$W/3; $RFH=14;
 fc($pdf,255,253,231); $pdf->Rect($x0,$y,$W,$RFH,'F');
@@ -562,6 +569,7 @@ foreach([['refocus1_time',1],['refocus2_time',2],['refocus3_time',3]] as [$key,$
 $y+=$RFH+2;
 
 // ── Section 10: Close Out ──────────────────────────────────────────────────
+$y = ensureSpace($pdf,$y,70);
 $y = sectionBar($pdf,$x0,$y,$W,$L['closeout']);
 $tc=(bool)($form['closeout_task_complete']??0);
 $eh=(bool)($form['closeout_ehs_events']??0);

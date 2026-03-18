@@ -79,6 +79,7 @@ class PluginSwatProfile extends CommonDBTM {
             echo '</tr>';
         }
         echo '</tbody></table></div></div>';
+        echo '<div id="swat-rights-status" style="padding:8px 16px;font-size:0.85rem;color:#065f46;display:none;">✓ Saved / נשמר</div>';
 
         if ($can_edit) {
             $ajax_url = Plugin::getWebDir('swat', false) . '/ajax/saverights.php';
@@ -96,6 +97,12 @@ class PluginSwatProfile extends CommonDBTM {
                         method:'POST',
                         headers:{'Content-Type':'application/x-www-form-urlencoded'},
                         body:'_glpi_csrf_token='+encodeURIComponent('{$token}')+'&profiles_id='+pid+'&field='+encodeURIComponent(field)+'&rights='+total
+                    }).then(function(r){ return r.json(); }).then(function(d){
+                        if(d.success){
+                            var s=document.getElementById('swat-rights-status');
+                            s.style.display='block';
+                            setTimeout(function(){ s.style.display='none'; }, 2000);
+                        }
                     });
                 });
             });

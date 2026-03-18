@@ -21,10 +21,16 @@ if (!$profiles_id || !in_array($field, $allowed_fields, true)) {
 }
 
 global $DB;
-$DB->query("
-    INSERT INTO `glpi_profilerights` (`profiles_id`, `name`, `rights`)
-    VALUES ({$profiles_id}, '{$field}', {$rights})
-    ON DUPLICATE KEY UPDATE `rights` = {$rights}
-");
+$existing = $DB->request([
+    'SELECT' => ['id'],
+    'FROM'   => 'glpi_profilerights',
+    'WHERE'  => ['profiles_id' => $profiles_id, 'name' => $field],
+    'LIMIT'  => 1,
+]);
+if (count($existing)) {
+    $DB->update('glpi_profilerights', ['rights' => $rights], ['profiles_id' => $profiles_id, 'name' => $field]);
+} else {
+    $DB->insert('glpi_profilerights', ['profiles_id' => $profiles_id, 'name' => $field, 'rights' => $rights]);
+}
 
 echo json_encode(['success' => true]);

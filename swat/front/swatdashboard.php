@@ -160,7 +160,7 @@ $root = Plugin::getWebDir('swat');
             padding:10px 14px;margin-bottom:6px;
             background:var(--swat-bg);border-radius:8px;
             border-left:4px solid var(--swat-teal);cursor:pointer;"
-             onclick="setFilter('permit','<?= addslashes($permit === '—' ? '' : $permit) ?>')">
+             onclick="setFilter('permit',<?= json_encode($permit === '—' ? '' : $permit) ?>)">
             <div style="font-weight:700;color:var(--swat-teal);min-width:100px;">
                 <i class="fas fa-hashtag"></i> <?= htmlspecialchars($permit) ?>
             </div>

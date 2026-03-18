@@ -10,7 +10,8 @@ if (!Session::haveRight('plugin_swat_admin', READ) && !Session::haveRight('confi
 }
 
 // Handle clear action
-if (isset($_GET['clear']) && (int)$_GET['clear'] === 1) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['clear']) && (int)$_POST['clear'] === 1) {
+    Session::checkCSRF($_POST);
     PluginSwatLog::clearLogs(0);
     PluginSwatLog::info('logs_cleared', 'All SWAT logs cleared by admin');
     Html::redirect(Plugin::getWebDir('swat') . '/front/swatlogs.php');

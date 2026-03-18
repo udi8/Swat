@@ -64,7 +64,8 @@ class PluginSwatLog extends CommonDBTM {
         echo '<h3><i class="fas fa-bug"></i> SWAT Debug Logs</h3>';
 
         // Filters
-        $level    = $_GET['log_level']  ?? '';
+        $allowed_levels = ['', 'DEBUG', 'INFO', 'WARNING', 'ERROR'];
+        $level    = in_array($_GET['log_level'] ?? '', $allowed_levels) ? ($_GET['log_level'] ?? '') : '';
         $form_id  = (int)($_GET['forms_id'] ?? 0);
         $dateFrom = $_GET['date_from']  ?? date('Y-m-d', strtotime('-7 days'));
         $dateTo   = $_GET['date_to']    ?? date('Y-m-d');
@@ -79,9 +80,13 @@ class PluginSwatLog extends CommonDBTM {
         </select>';
         echo '<input type="date" name="date_from" value="' . htmlspecialchars($dateFrom) . '">';
         echo '<input type="date" name="date_to"   value="' . htmlspecialchars($dateTo)   . '">';
-        echo '<input type="number" name="forms_id" placeholder="Form ID" value="' . $form_id . '">';
+        echo '<input type="number" name="forms_id" placeholder="Form ID" value="' . htmlspecialchars((string)$form_id, ENT_QUOTES) . '">';
         echo '<button type="submit" class="btn btn-sm btn-primary">Filter</button>';
-        echo '<a href="' . Plugin::getWebDir('swat') . '/front/swatlogs.php?clear=1" class="btn btn-sm btn-danger" onclick="return confirm(\'Clear all logs?\')">Clear Logs</a>';
+        echo '</form>';
+        echo '<form method="post" action="" style="display:inline">';
+        echo Html::hidden('_glpi_csrf_token', ['value' => Session::getNewCSRFToken()]);
+        echo Html::hidden('clear', ['value' => '1']);
+        echo '<button type="submit" class="btn btn-sm btn-danger" onclick="return confirm(\'Clear all logs?\')">Clear Logs</button>';
         echo '</form>';
         echo '</div>'; // toolbar
 
@@ -139,6 +144,7 @@ class PluginSwatLog extends CommonDBTM {
 
     // ── Clear old logs ─────────────────────────────────────────────────────
     public static function clearLogs(int $days_old = 30): void {
+        if (!Session::haveRight('config', UPDATE)) { return; }
         global $DB;
         $cutoff = date('Y-m-d H:i:s', strtotime("-{$days_old} days"));
         $DB->delete('glpi_plugin_swat_logs', ['log_time' => ['<', $cutoff]]);

@@ -1,38 +1,42 @@
 <?php
 /**
  * SWAT Plugin - AJAX: Delete image attachment
- * csrf_compliant = true  →  plugin validates CSRF explicitly.
+ * csrf_compliant = true → GLPI bootstrap already validated CSRF.
  */
 
-$__delete_done = false;
+$__done = false;
 
-ob_start();
+ob_start(); // Buffer 1: bootstrap
 
-register_shutdown_function(function() use (&$__delete_done) {
-    if ($__delete_done) return;
+register_shutdown_function(function () use (&$__done) {
+    if ($__done) return;
     while (ob_get_level() > 0) { ob_end_clean(); }
-    header_remove();
-    header('Content-Type: application/json');
-    echo json_encode(['success' => false, 'error' => 'session_expired']);
+    if (!headers_sent()) {
+        header_remove();
+        header('Content-Type: application/json');
+    }
+    echo json_encode(['success' => false, 'error' => 'auth_failed']);
 });
 
 include('../../../inc/includes.php');
 
-while (ob_get_level() > 0) { ob_end_clean(); }
+ob_end_clean(); // End Buffer 1
+ob_start();     // Buffer 2: our code
+
 header('Content-Type: application/json');
 
 if (!Session::haveRight('plugin_swat_form', READ)) {
-    $__delete_done = true;
+    ob_end_clean();
+    $__done = true;
     http_response_code(403);
     echo json_encode(['success' => false]);
     exit;
 }
 
-Session::checkCSRF($_POST);
-
 $att_id = (int)($_POST['attachment_id'] ?? 0);
 if (!$att_id) {
-    $__delete_done = true;
+    ob_end_clean();
+    $__done = true;
     echo json_encode(['success' => false]);
     exit;
 }
@@ -43,7 +47,8 @@ foreach ($DB->request(['FROM' => 'glpi_plugin_swat_attachments', 'WHERE' => ['id
     $row = $r;
 }
 if (!$row) {
-    $__delete_done = true;
+    ob_end_clean();
+    $__done = true;
     echo json_encode(['success' => false]);
     exit;
 }
@@ -54,5 +59,6 @@ if (file_exists($filepath)) {
 }
 $DB->delete('glpi_plugin_swat_attachments', ['id' => $att_id]);
 
-$__delete_done = true;
+ob_end_clean();
+$__done = true;
 echo json_encode(['success' => true]);

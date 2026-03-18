@@ -163,6 +163,18 @@ function plugin_swat_install() {
         ") or die('SWAT: Error creating glpi_plugin_swat_attachments: ' . $DB->error());
     }
 
+    // ── Table: team groups config ─────────────────────────────────────────────
+    if (!$DB->tableExists('glpi_plugin_swat_teams')) {
+        $DB->query("
+            CREATE TABLE `glpi_plugin_swat_teams` (
+                `id`        INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                `groups_id` INT UNSIGNED NOT NULL DEFAULT 0,
+                PRIMARY KEY (`id`),
+                UNIQUE KEY `groups_id` (`groups_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET={$charset} COLLATE={$collation}
+        ") or die('SWAT: Error creating glpi_plugin_swat_teams: ' . $DB->error());
+    }
+
     // ── Rights ────────────────────────────────────────────────────────────────
     $right_names = ['plugin_swat_form', 'plugin_swat_admin'];
 
@@ -199,7 +211,7 @@ function plugin_swat_install() {
 function plugin_swat_uninstall() {
     global $DB;
 
-    foreach (['glpi_plugin_swat_logs','glpi_plugin_swat_attachments','glpi_plugin_swat_participants','glpi_plugin_swat_forms','glpi_plugin_swat_permits'] as $t) {
+    foreach (['glpi_plugin_swat_logs','glpi_plugin_swat_attachments','glpi_plugin_swat_participants','glpi_plugin_swat_forms','glpi_plugin_swat_permits','glpi_plugin_swat_teams'] as $t) {
         if ($DB->tableExists($t)) {
             $DB->query("DROP TABLE `{$t}`");
         }

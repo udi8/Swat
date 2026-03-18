@@ -853,86 +853,102 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-});
 
-// Image upload
-(function() {
-    var formId = <?= $form_id ?: 'null' ?>;
-    var root = '<?= $root ?>';
-    if (!formId) return;
 
-    function loadAttachments() {
-        fetch(root + '/ajax/get_attachments.php?form_id=' + formId)
-            .then(function(r){ return r.json(); })
-            .then(function(atts) {
-                var list = document.getElementById('swat-attachments-list');
-                var noP = document.getElementById('swat-no-photos');
-                if (!list) return;
-                list.innerHTML = '';
-                if (atts.length === 0 && noP) { noP.style.display = ''; return; }
-                if (noP) noP.style.display = 'none';
-                atts.forEach(function(att) {
-                    var div = document.createElement('div');
-                    div.style.cssText = 'position:relative;border:1px solid #ddd;border-radius:6px;overflow:hidden;width:120px;height:100px;';
-                    var img = document.createElement('img');
-                    img.src = root + '/front/view_attachment.php?id=' + att.id;
-                    img.style.cssText = 'width:100%;height:80px;object-fit:cover;display:block;';
-                    img.onclick = function(){ window.open(img.src,'_blank'); };
-                    img.style.cursor = 'pointer';
-                    var lbl = document.createElement('div');
-                    lbl.style.cssText = 'font-size:0.65rem;padding:2px 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:#f5f5f5;';
-                    lbl.textContent = att.filename;
-                    div.appendChild(img);
-                    div.appendChild(lbl);
-                    var del = document.createElement('button');
-                    del.textContent = '✕';
-                    del.style.cssText = 'position:absolute;top:2px;right:2px;background:rgba(0,0,0,0.5);color:#fff;border:none;border-radius:50%;width:18px;height:18px;font-size:0.65rem;cursor:pointer;line-height:1;padding:0;';
-                    del.onclick = function(){
-                        if (!confirm('Delete photo?')) return;
-                        var token = document.querySelector('input[name="_glpi_csrf_token"]').value;
-                        fetch(root + '/ajax/delete_attachment.php', {
-                            method:'POST',
-                            headers:{'Content-Type':'application/x-www-form-urlencoded'},
-                            body:'_glpi_csrf_token='+encodeURIComponent(token)+'&attachment_id='+att.id
-                        }).then(function(){ loadAttachments(); });
-                    };
-                    div.appendChild(del);
-                    list.appendChild(div);
+    // ── Image upload (must run AFTER clone so we bind to the new element) ──
+    (function() {
+        var formId = <?= $form_id ?: 'null' ?>;
+        var root   = '<?= $root ?>';
+        if (!formId) return;
+
+        function loadAttachments() {
+            fetch(root + '/ajax/get_attachments.php?form_id=' + formId)
+                .then(function(r){ return r.json(); })
+                .then(function(atts) {
+                    var list = document.getElementById('swat-attachments-list');
+                    var noP  = document.getElementById('swat-no-photos');
+                    if (!list) return;
+                    list.innerHTML = '';
+                    if (atts.length === 0 && noP) { noP.style.display = ''; return; }
+                    if (noP) noP.style.display = 'none';
+                    atts.forEach(function(att) {
+                        var div = document.createElement('div');
+                        div.style.cssText = 'position:relative;border:1px solid #ddd;border-radius:6px;overflow:hidden;width:120px;height:100px;';
+                        var img = document.createElement('img');
+                        img.src = root + '/front/view_attachment.php?id=' + att.id;
+                        img.style.cssText = 'width:100%;height:80px;object-fit:cover;display:block;cursor:pointer;';
+                        img.onclick = function(){ window.open(img.src,'_blank'); };
+                        var lbl = document.createElement('div');
+                        lbl.style.cssText = 'font-size:0.65rem;padding:2px 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:#f5f5f5;';
+                        lbl.textContent = att.filename;
+                        div.appendChild(img);
+                        div.appendChild(lbl);
+                        var del = document.createElement('button');
+                        del.textContent = '✕';
+                        del.style.cssText = 'position:absolute;top:2px;right:2px;background:rgba(0,0,0,0.5);color:#fff;border:none;border-radius:50%;width:18px;height:18px;font-size:0.65rem;cursor:pointer;line-height:1;padding:0;';
+                        del.onclick = function(){
+                            if (!confirm('Delete photo?')) return;
+                            fetch(root + '/ajax/get_csrf.php')
+                                .then(function(r){ return r.json(); })
+                                .then(function(d){
+                                    return fetch(root + '/ajax/delete_attachment.php', {
+                                        method:'POST',
+                                        headers:{'Content-Type':'application/x-www-form-urlencoded'},
+                                        body:'_glpi_csrf_token='+encodeURIComponent(d.token)+'&attachment_id='+att.id
+                                    });
+                                })
+                                .then(function(){ loadAttachments(); });
+                        };
+                        div.appendChild(del);
+                        list.appendChild(div);
+                    });
                 });
-            });
-    }
-    loadAttachments();
+        }
+        loadAttachments();
 
-    var upInput = document.getElementById('swat-img-upload');
-    if (upInput) {
-        upInput.addEventListener('change', function() {
-            var files = Array.from(this.files);
-            if (!files.length) return;
-            var status = document.getElementById('swat-upload-status');
-            var token  = document.querySelector('input[name="_glpi_csrf_token"]').value;
-            status.textContent = 'Uploading ' + files.length + ' photo(s)...';
-            var promises = files.map(function(file) {
-                var fd = new FormData();
-                fd.append('image', file);
-                fd.append('form_id', formId);
-                fd.append('_glpi_csrf_token', token);
-                return fetch(root + '/ajax/upload_image.php', { method:'POST', body: fd })
-                    .then(function(r){ return r.json(); });
-            });
-            Promise.all(promises).then(function(results) {
-                var failed = results.filter(function(d){ return !d.success; });
-                if (failed.length === 0) {
-                    status.textContent = '✓ ' + files.length + ' photo(s) uploaded';
-                } else {
-                    status.textContent = '✗ ' + failed.length + ' failed of ' + files.length;
+        var upInput = document.getElementById('swat-img-upload');
+        if (upInput) {
+            upInput.addEventListener('change', function() {
+                var files = Array.from(this.files);
+                if (!files.length) return;
+                var status   = document.getElementById('swat-upload-status');
+                var failCount = 0;
+                status.textContent = 'Uploading ' + files.length + ' photo(s)...';
+
+                // Sequential uploads — each fetches its own CSRF token (tokens are single-use in GLPI)
+                function uploadNext(idx) {
+                    if (idx >= files.length) {
+                        if (failCount === 0) {
+                            status.textContent = '✓ ' + files.length + ' photo(s) uploaded';
+                        } else {
+                            status.textContent = '✗ ' + failCount + ' failed of ' + files.length;
+                        }
+                        loadAttachments();
+                        setTimeout(function(){ status.textContent = ''; }, 3500);
+                        return;
+                    }
+                    fetch(root + '/ajax/get_csrf.php')
+                        .then(function(r){ return r.json(); })
+                        .then(function(d) {
+                            var fd = new FormData();
+                            fd.append('image', files[idx]);
+                            fd.append('form_id', formId);
+                            fd.append('_glpi_csrf_token', d.token);
+                            return fetch(root + '/ajax/upload_image.php', { method:'POST', body: fd });
+                        })
+                        .then(function(r){ return r.json(); })
+                        .then(function(result){
+                            if (!result.success) failCount++;
+                            uploadNext(idx + 1);
+                        })
+                        .catch(function(){ failCount++; uploadNext(idx + 1); });
                 }
-                loadAttachments();
-                setTimeout(function(){ status.textContent = ''; }, 3500);
+                uploadNext(0);
+                this.value = '';
             });
-            this.value = '';
-        });
-    }
-})();
+        }
+    })();
+});
 </script>
 
 <?php Html::footer(); ?>

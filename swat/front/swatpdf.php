@@ -332,10 +332,13 @@ $pdf->SetXY($x0+55, $y+2); $pdf->Cell(80, 9, 'SWAT', 0, 0, 'C');
 tc($pdf,255,255,255); $pdf->SetFont('dejavusans','',7);
 $pdf->SetXY($x0+55, $y+11); $pdf->Cell(80, 5, $L['title'], 0, 0, 'C');
 
-// Form badge
-fc($pdf,200,224,0); $pdf->RoundedRect($x0+$W-26,$y+4,24,10,3,'1111','F');
-tc($pdf,0,107,107); $pdf->SetFont('dejavusans','B',8);
-$pdf->SetXY($x0+$W-26,$y+6.5); $pdf->Cell(24,5,"Form #{$fid}",0,0,'C');
+// Permit badge (show permit ref, fall back to form #)
+$permit_badge = trim($form['work_permit_ref'] ?? '');
+if (!$permit_badge) $permit_badge = "Form #{$fid}";
+if (mb_strlen($permit_badge) > 18) $permit_badge = mb_substr($permit_badge, 0, 17) . '…';
+fc($pdf,200,224,0); $pdf->RoundedRect($x0+$W-46,$y+4,44,10,3,'1111','F');
+tc($pdf,0,107,107); $pdf->SetFont('dejavusans','B',7);
+$pdf->SetXY($x0+$W-46,$y+6.5); $pdf->Cell(44,5,$permit_badge,0,0,'C');
 $y += $HDR + 2;
 
 // ── Section 1: Site Information ────────────────────────────────────────────

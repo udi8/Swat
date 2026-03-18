@@ -12,17 +12,56 @@ $current_user_id   = (int) Session::getLoginUserID();
 $current_user_name = getUserName($current_user_id);
 $is_admin          = Session::haveRight('plugin_swat_admin', READ);
 
-// Get user's primary GLPI group name (for team display in header)
+// Ensure teams config table exists (for installs that pre-date this feature)
+if (!$DB->tableExists('glpi_plugin_swat_teams')) {
+    $DB->query("CREATE TABLE IF NOT EXISTS `glpi_plugin_swat_teams` (
+        `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+        `groups_id` INT UNSIGNED NOT NULL DEFAULT 0,
+        PRIMARY KEY (`id`), UNIQUE KEY `groups_id` (`groups_id`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+}
+
+// Get user's team name — prefer configured SWAT teams, fall back to first group
 $team_name = '';
-$gr = $DB->query("SELECT g.name FROM glpi_groups_users gu
-    INNER JOIN glpi_groups g ON g.id = gu.groups_id
-    WHERE gu.users_id = {$current_user_id} LIMIT 1");
-if ($gr && $row = $DB->fetchAssoc($gr)) { $team_name = $row['name']; }
+if ($DB->tableExists('glpi_plugin_swat_teams')) {
+    $gr = $DB->query("SELECT g.name FROM glpi_groups_users gu
+        INNER JOIN glpi_groups g ON g.id = gu.groups_id
+        INNER JOIN glpi_plugin_swat_teams st ON st.groups_id = gu.groups_id
+        WHERE gu.users_id = {$current_user_id} LIMIT 1");
+    if ($gr && $row = $DB->fetchAssoc($gr)) { $team_name = $row['name']; }
+}
+if (!$team_name) {
+    $gr = $DB->query("SELECT g.name FROM glpi_groups_users gu
+        INNER JOIN glpi_groups g ON g.id = gu.groups_id
+        WHERE gu.users_id = {$current_user_id} LIMIT 1");
+    if ($gr && $row = $DB->fetchAssoc($gr)) { $team_name = $row['name']; }
+}
 
 // ── Handle status change / archive ────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['swat_action'])) {
     global $DB;
     $fid = (int)($_POST['form_id'] ?? 0);
+
+    // Admin-only: save team group configuration
+    if ($_POST['swat_action'] === 'save_teams' && Session::haveRight('plugin_swat_admin', UPDATE)) {
+        Session::checkCSRF($_POST);
+        // Ensure table exists (for existing installs)
+        if (!$DB->tableExists('glpi_plugin_swat_teams')) {
+            $DB->query("CREATE TABLE `glpi_plugin_swat_teams` (
+                `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                `groups_id` INT UNSIGNED NOT NULL DEFAULT 0,
+                PRIMARY KEY (`id`), UNIQUE KEY `groups_id` (`groups_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+        }
+        $DB->query("DELETE FROM `glpi_plugin_swat_teams`");
+        foreach (array_map('intval', $_POST['team_groups'] ?? []) as $gid) {
+            if ($gid > 0) {
+                $DB->query("INSERT IGNORE INTO `glpi_plugin_swat_teams` (`groups_id`) VALUES ({$gid})");
+            }
+        }
+        Html::redirect('swatdashboard.php?teams_saved=1');
+    }
+
     if (Session::haveRight('plugin_swat_form', UPDATE)) {
         switch ($_POST['swat_action']) {
             case 'set_status':
@@ -106,6 +145,22 @@ foreach ($show_forms as $f) {
     $permit_map[$p][] = $f;
 }
 
+// ── Admin team config data ─────────────────────────────────────────────────────
+$all_glpi_groups    = [];
+$configured_team_groups = [];
+if ($is_admin) {
+    $res = $DB->query("SELECT `id`, `name` FROM `glpi_groups` WHERE `is_deleted`=0 ORDER BY `name` ASC");
+    while ($res && $row = $DB->fetchAssoc($res)) {
+        $all_glpi_groups[] = $row;
+    }
+    if ($DB->tableExists('glpi_plugin_swat_teams')) {
+        $res2 = $DB->query("SELECT `groups_id` FROM `glpi_plugin_swat_teams`");
+        while ($res2 && $row2 = $DB->fetchAssoc($res2)) {
+            $configured_team_groups[] = (int)$row2['groups_id'];
+        }
+    }
+}
+
 Html::header('SWAT Dashboard', '', 'management', 'PluginSwatDashboard');
 $root = Plugin::getWebDir('swat');
 ?>
@@ -135,6 +190,56 @@ $root = Plugin::getWebDir('swat');
         <?php endif; ?>
     </div>
 </div>
+
+<?php if ($is_admin): ?>
+<!-- ── Admin: Team Group Configuration ──────────────────────────────── -->
+<?php if (isset($_GET['teams_saved'])): ?>
+<div class="alert alert-success m-3"><i class="fas fa-check-circle me-2"></i>Team configuration saved / הגדרות הצוות נשמרו</div>
+<?php endif; ?>
+<div class="swat-card" style="border-left:4px solid #f59e0b;margin-bottom:10px;">
+    <div class="swat-card-header" style="cursor:pointer;user-select:none;"
+         onclick="var b=document.getElementById('swat-teams-body');b.style.display=b.style.display==='none'?'':'none';">
+        <i class="fas fa-users-cog"></i>
+        Admin: SWAT Team Groups / קבוצות צוות SWAT
+        <span style="margin-left:auto;font-size:0.8rem;font-weight:400;color:#aaa;">
+            <?= count($configured_team_groups) ?> configured — click to <?= count($configured_team_groups)?'edit':'setup'?>
+        </span>
+        <i class="fas fa-chevron-down" style="margin-left:8px;"></i>
+    </div>
+    <div id="swat-teams-body" style="display:none;">
+        <div class="swat-card-body">
+            <p style="font-size:0.85rem;color:#666;margin-bottom:12px;">
+                Select which GLPI groups are considered SWAT teams.
+                Members of these groups will see each other's forms in the <strong>Team</strong> tab.
+                If none are selected, users see only forms from their own groups.
+                / בחר אילו קבוצות GLPI הן צוותי SWAT.
+            </p>
+            <form method="POST" action="swatdashboard.php">
+                <?php echo Html::hidden('_glpi_csrf_token', ['value' => Session::getNewCSRFToken()]); ?>
+                <input type="hidden" name="swat_action" value="save_teams">
+                <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;">
+                <?php foreach ($all_glpi_groups as $g): ?>
+                    <label style="display:inline-flex;align-items:center;gap:5px;background:<?= in_array((int)$g['id'], $configured_team_groups)?'#e0f7f7':'#f5f5f5' ?>;
+                           padding:5px 10px;border-radius:5px;cursor:pointer;font-size:0.85rem;
+                           border:1px solid <?= in_array((int)$g['id'], $configured_team_groups)?'#006B6B':'#ddd' ?>;">
+                        <input type="checkbox" name="team_groups[]" value="<?= (int)$g['id'] ?>"
+                               <?= in_array((int)$g['id'], $configured_team_groups) ? 'checked' : '' ?>>
+                        <?= htmlspecialchars($g['name']) ?>
+                    </label>
+                <?php endforeach; ?>
+                <?php if (empty($all_glpi_groups)): ?>
+                    <span style="color:#aaa;font-size:0.85rem;">No groups found in GLPI / לא נמצאו קבוצות</span>
+                <?php endif; ?>
+                </div>
+                <button type="submit"
+                        style="background:#006B6B;color:#C8E000;border:none;border-radius:5px;padding:7px 18px;font-size:0.85rem;font-weight:700;cursor:pointer;">
+                    <i class="fas fa-save me-1"></i> Save Team Config / שמור הגדרות צוות
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
 
 <!-- ── Stats ──────────────────────────────────────────────────────────── -->
 <div class="swat-stats-row" style="margin:16px 0;">
@@ -254,7 +359,7 @@ $root = Plugin::getWebDir('swat');
                 $new_form_url = 'swatform.php?action=new&permit=' . urlencode($permit)
                     . ($latest_form_id ? '&copy_from=' . $latest_form_id : '');
             ?>
-            <a href="<?= $new_form_url ?>"
+            <a href="<?= htmlspecialchars($new_form_url) ?>"
                class="swat-btn swat-btn-secondary" style="padding:3px 8px;font-size:0.75rem;"
                title="New form for this permit (pre-filled from last form)">
                 <i class="fas fa-plus"></i>

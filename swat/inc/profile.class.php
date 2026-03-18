@@ -82,7 +82,8 @@ class PluginSwatProfile extends CommonDBTM {
         echo '<div id="swat-rights-status" style="padding:8px 16px;font-size:0.85rem;color:#065f46;display:none;">✓ Saved / נשמר</div>';
 
         if ($can_edit) {
-            $ajax_url    = Plugin::getWebDir('swat', false) . '/ajax/saverights.php';
+            global $CFG_GLPI;
+            $ajax_url    = $CFG_GLPI['root_doc'] . '/plugins/swat/ajax/saverights.php';
             // Each CSRF token is single-use in GLPI – generate one per field
             $token_form  = Session::getNewCSRFToken();
             $token_admin = Session::getNewCSRFToken();

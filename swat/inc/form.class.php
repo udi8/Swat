@@ -241,29 +241,37 @@ class PluginSwatForm extends CommonDBTM {
         $where = ['is_deleted' => 0];
 
         if ($include_team) {
-            // Find all groups the current user belongs to
-            $group_ids = [];
-            foreach ($DB->request([
-                'SELECT' => ['groups_id'],
-                'FROM'   => 'glpi_groups_users',
-                'WHERE'  => ['users_id' => $users_id],
-            ]) as $gr) {
-                $group_ids[] = (int)$gr['groups_id'];
+            // Check for admin-configured SWAT team groups
+            $configured_groups = [];
+            if ($DB->tableExists('glpi_plugin_swat_teams')) {
+                foreach ($DB->request(['SELECT' => ['groups_id'], 'FROM' => 'glpi_plugin_swat_teams']) as $tg) {
+                    $configured_groups[] = (int)$tg['groups_id'];
+                }
             }
 
-            if (!empty($group_ids)) {
-                // Find all users in those groups
+            if (empty($configured_groups)) {
+                // No admin config: fall back to user's own GLPI groups
+                foreach ($DB->request([
+                    'SELECT' => ['groups_id'],
+                    'FROM'   => 'glpi_groups_users',
+                    'WHERE'  => ['users_id' => $users_id],
+                ]) as $gr) {
+                    $configured_groups[] = (int)$gr['groups_id'];
+                }
+            }
+
+            if (!empty($configured_groups)) {
+                // Find all users in the configured SWAT team groups
                 $team_user_ids = [$users_id];
                 foreach ($DB->request([
                     'SELECT' => ['users_id'],
                     'FROM'   => 'glpi_groups_users',
-                    'WHERE'  => ['groups_id' => $group_ids],
+                    'WHERE'  => ['groups_id' => $configured_groups],
                 ]) as $tu) {
                     $team_user_ids[] = (int)$tu['users_id'];
                 }
                 $where['users_id_creator'] = array_unique($team_user_ids);
             } else {
-                // No groups → show only own forms
                 $where['users_id_creator'] = $users_id;
             }
         } else {

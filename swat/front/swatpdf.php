@@ -10,12 +10,13 @@ if (!Session::haveRight('plugin_swat_form', READ) && !Session::haveRight('config
 }
 
 $form_id = (int)($_GET['id'] ?? 0);
-$lang    = $_GET['lang'] ?? 'en'; // 'en' or 'he'
+$lang    = $_GET['lang'] ?? 'both'; // 'en', 'he', or 'both'
 if (!$form_id) Html::displayErrorAndDie('No form ID');
 $form = PluginSwatForm::getFormData($form_id);
 if (!$form) Html::displayErrorAndDie('Form not found');
 
 PluginSwatLog::info('pdf_generate', "PDF [{$lang}] form #{$form_id}", $form_id);
+$LANG_BOTH = ($lang === 'both');
 
 // Load TCPDF from GLPI core
 $tcpdf = GLPI_ROOT . '/vendor/tecnickcom/tcpdf/tcpdf.php';
@@ -300,6 +301,12 @@ function mottoBar(TCPDF $p, float $x, float $y, float $w, bool $isHe): float {
     }
     return $y + $h;
 }
+
+// ── Page-rendering function (called once for EN, twice for combined EN+HE) ─
+function swat_render_pages(
+    SWAT_PDF $pdf, bool $IS_HE, array $L, array $form, int $fid,
+    string $cp, string $pics, array $LSR, array $HAZARDS, array $DOCS
+): void {
 
 // ── PAGE 1 ─────────────────────────────────────────────────────────────────
 $pdf->AddPage();
@@ -606,7 +613,69 @@ $y+=$SOH+2;
 
 mottoBar($pdf,$x0,$y,$W,$IS_HE);
 
+} // end swat_render_pages()
+
+// ── Build labels helper ────────────────────────────────────────────────────
+function swat_build_L(bool $IS_HE): array {
+    return [
+        'title'        => $IS_HE ? 'כלי הערכת התחלת עבודה' : 'Start Work Assessment Tool',
+        'site_info'    => $IS_HE ? 'פרטי אתר' : 'Site Information',
+        'site_loc'     => $IS_HE ? 'אתר / מיקום עבודה' : 'SITE / Work Location',
+        'permit'       => $IS_HE ? 'מספר אישור עבודה' : 'Work Permit #',
+        'date'         => $IS_HE ? 'תאריך' : 'Date',
+        'time'         => $IS_HE ? 'שעה' : 'Time',
+        'shift'        => $IS_HE ? 'משמרת' : 'Shift',
+        'shift_day'    => $IS_HE ? 'יום' : 'Day',
+        'shift_night'  => $IS_HE ? 'לילה' : 'Night',
+        'correct_unit' => $IS_HE ? 'ביחידה הנכונה?' : 'Correct unit & equipment?',
+        'yes'          => $IS_HE ? 'כן' : 'YES',
+        'no'           => $IS_HE ? 'לא' : 'NO',
+        'task_assess'  => $IS_HE ? 'הערכת המשימה' : 'Task Assessment',
+        'what_task'    => $IS_HE ? 'מהי המשימה?' : 'WHAT is the task?',
+        'how_do'       => $IS_HE ? 'כיצד תבוצע?' : 'HOW will I do it?',
+        'what_haz'     => $IS_HE ? 'מהם הסיכונים?' : 'WHAT are the hazards?',
+        'how_prev'     => $IS_HE ? 'כיצד למנוע פציעות?' : 'HOW can I prevent injury?',
+        'lsr'          => $IS_HE ? 'חוקים מצילי חיים' : 'The Life Saving Rules',
+        'other_haz'    => $IS_HE ? 'סיכונים אחרים' : 'Other Hazards',
+        'other'        => $IS_HE ? 'אחר' : 'Other',
+        'cp_part'      => $IS_HE ? 'אדם מוסמך ומשתתפים' : 'Competent Person & Participants',
+        'cp_leader'    => $IS_HE ? 'אדם מוסמך / מוביל משימה' : 'CP / Task Leader',
+        'participants' => $IS_HE ? 'משתתפים' : 'Participants',
+        'guiding_docs' => $IS_HE ? 'מסמכי הנחיה בשימוש' : 'Guiding Documents Used',
+        'hc_title'     => $IS_HE ? 'סיכונים ואמצעי בקרה' : 'Hazard & Control Measures',
+        'ppe'          => $IS_HE ? 'ציוד מגן אישי הינו המגן האחרון' : 'PPE IS THE LAST LINE OF DEFENSE',
+        'what_hurt'    => $IS_HE ? 'מה עלול לפגוע בי?' : 'WHAT can hurt me?',
+        'how_prevent'  => $IS_HE ? 'כיצד ניתן למנוע?' : 'HOW can I prevent injury?',
+        'refocus'      => $IS_HE ? 'מיקוד מחדש' : 'Task Refocus',
+        'refocus_n'    => $IS_HE ? 'מיקוד מחדש #' : 'Refocus #',
+        'time_lbl'     => $IS_HE ? 'שעה' : 'Time',
+        'closeout'     => $IS_HE ? 'סגירה' : 'Close Out',
+        'task_done'    => $IS_HE ? 'האם המשימה הסתיימה?' : 'Is the task complete?',
+        'ehs'          => $IS_HE ? 'אירועי בטיחות?' : 'Were there any EHS Events?',
+        'notified'     => $IS_HE ? 'אם כן, מי עודכן ובאיזו שעה?' : 'If yes, who was notified & what time?',
+        'signoff'      => $IS_HE ? 'חתימת אדם מוסמך' : 'CP / Task Leader Sign-off',
+        'datetime'     => $IS_HE ? 'תאריך ושעה' : 'Date & Time',
+        'motto'        => $IS_HE
+            ? 'אנחנו מתחילים עבודה רק אם זה בטוח ועוצרים באם לא'
+            : "WE START WORK ONLY WHEN IT'S SAFE, AND STOP WHEN IT'S NOT",
+        'motto2'       => $IS_HE
+            ? "WE START WORK ONLY WHEN IT'S SAFE, AND STOP WHEN IT'S NOT"
+            : 'אנחנו מתחילים עבודה רק אם זה בטוח ועוצרים באם לא',
+        'detail_task'  => $IS_HE ? 'פירוט המשימה' : 'Detailed Task',
+        'brief_desc'   => $IS_HE ? 'תיאור קצר' : 'Brief Description',
+        'details'      => $IS_HE ? 'פרטים' : 'Details',
+    ];
+}
+
+// ── Render pages ───────────────────────────────────────────────────────────
+if ($LANG_BOTH) {
+    swat_render_pages($pdf, false, swat_build_L(false), $form, $fid, $cp, $pics, $LSR, $HAZARDS, $DOCS);
+    swat_render_pages($pdf, true,  swat_build_L(true),  $form, $fid, $cp, $pics, $LSR, $HAZARDS, $DOCS);
+} else {
+    swat_render_pages($pdf, $IS_HE, $L, $form, $fid, $cp, $pics, $LSR, $HAZARDS, $DOCS);
+}
+
 // ── Output ─────────────────────────────────────────────────────────────────
-$lang_suffix = $IS_HE ? '_HE' : '_EN';
+$lang_suffix = $LANG_BOTH ? '_EN_HE' : ($IS_HE ? '_HE' : '_EN');
 $pdf->Output("SWAT_Form_{$fid}{$lang_suffix}_".date('Ymd_His').'.pdf','D');
 exit;

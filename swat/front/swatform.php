@@ -12,12 +12,36 @@ if (!Session::haveRight('plugin_swat_form', READ) && !Session::haveRight('config
 $action         = $_GET['action'] ?? 'new';
 $form_id        = (int)($_GET['id'] ?? 0);
 $prefill_permit = htmlspecialchars($_GET['permit'] ?? '');
+$copy_from_id   = (int)($_GET['copy_from'] ?? 0);
 $form    = null;
 
 if ($form_id > 0) {
     $form = PluginSwatForm::getFormData($form_id);
     if (!$form) {
         Html::displayErrorAndDie('Form not found');
+    }
+} elseif ($copy_from_id > 0 && $action === 'new') {
+    // Pre-fill new form with all selections from a previous form (duplicate)
+    $source = PluginSwatForm::getFormData($copy_from_id);
+    if ($source) {
+        $form = $source;
+        // Clear identity fields so this is treated as a new form
+        $form['id']               = 0;
+        $form['form_date']        = date('Y-m-d');
+        $form['form_time']        = date('H:i');
+        $form['closeout_task_complete'] = 0;
+        $form['closeout_ehs_events']    = 0;
+        $form['closeout_notified']      = '';
+        $form['closeout_timestamp']     = '';
+        $form['closeout_cp_name']       = '';
+        $form['status']                 = 'submitted';
+        $form['date_creation']          = '';
+        $form['date_mod']               = '';
+        $form['users_id_creator']       = (int) Session::getLoginUserID();
+        // Refocus times cleared
+        $form['refocus1_time'] = '';
+        $form['refocus2_time'] = '';
+        $form['refocus3_time'] = '';
     }
 }
 $save_error = '';
@@ -125,8 +149,7 @@ $is_custom_cp = ($cp_id != $current_user_id || $cp_contact);
                 </a>
             <?php endif; ?>
             <?php if ($form_id): ?>
-                <a href="swatpdf.php?id=<?= $form_id ?>&lang=en" class="swat-btn swat-btn-pdf"><i class="fas fa-file-pdf"></i> PDF EN</a>
-                <a href="swatpdf.php?id=<?= $form_id ?>&lang=he" class="swat-btn swat-btn-pdf" style="background:#006B6B;"><i class="fas fa-file-pdf"></i> PDF עב</a>
+                <a href="swatpdf.php?id=<?= $form_id ?>&lang=both" class="swat-btn swat-btn-pdf"><i class="fas fa-file-pdf"></i> PDF (EN + עב)</a>
             <?php endif; ?>
             <a href="swatdashboard.php" class="swat-btn swat-btn-secondary">
                 <i class="fas fa-arrow-left"></i> Dashboard
@@ -165,9 +188,49 @@ $is_custom_cp = ($cp_id != $current_user_id || $cp_contact);
                         <span class="en">Work Permit #</span>
                         <span class="he">מספר אישור עבודה</span>
                     </div>
-                    <input type="text" name="work_permit_ref" class="swat-input" required
-                           value="<?= htmlspecialchars($form_data['work_permit_ref'] ?? $prefill_permit) ?>"
-                           <?= $is_view ? 'readonly' : '' ?>>
+                    <?php
+                    // Extract the XXXXX part from a permit like TZA-XXXXX-YEAR
+                    $raw_permit = $form_data['work_permit_ref'] ?? $prefill_permit;
+                    $permit_year = date('Y');
+                    $permit_code = '';
+                    if (preg_match('/^TZA-(.+)-(\d{4})$/', $raw_permit, $pm)) {
+                        $permit_code = $pm[1];
+                        $permit_year = $pm[2];
+                    } elseif ($raw_permit) {
+                        // Legacy value not in new format - show as-is in code field
+                        $permit_code = $raw_permit;
+                    }
+                    ?>
+                    <?php if ($is_view): ?>
+                        <input type="text" class="swat-input" value="<?= htmlspecialchars($raw_permit) ?>" readonly>
+                        <input type="hidden" name="work_permit_ref" value="<?= htmlspecialchars($raw_permit) ?>">
+                    <?php else: ?>
+                        <input type="hidden" id="swat-permit-full" name="work_permit_ref"
+                               value="<?= htmlspecialchars($raw_permit) ?>">
+                        <div style="display:flex;align-items:center;gap:0;background:#fff;border:1px solid #ccc;border-radius:5px;overflow:hidden;">
+                            <span style="padding:7px 8px;background:#f0f0f0;color:#555;font-size:0.9rem;font-weight:600;white-space:nowrap;border-right:1px solid #ccc;">TZA-</span>
+                            <input type="text" id="swat-permit-code"
+                                   placeholder="XXXXX"
+                                   maxlength="20"
+                                   style="border:none;outline:none;padding:7px 6px;font-size:0.9rem;flex:1;min-width:60px;"
+                                   value="<?= htmlspecialchars($permit_code) ?>"
+                                   required>
+                            <span style="padding:7px 8px;background:#f0f0f0;color:#555;font-size:0.9rem;font-weight:600;white-space:nowrap;border-left:1px solid #ccc;">-<?= $permit_year ?></span>
+                        </div>
+                        <script>
+                        (function(){
+                            var codeInput = document.getElementById('swat-permit-code');
+                            var hiddenFull = document.getElementById('swat-permit-full');
+                            var year = '<?= $permit_year ?>';
+                            function updateFull() {
+                                var code = codeInput.value.trim().toUpperCase();
+                                hiddenFull.value = code ? 'TZA-' + code + '-' + year : '';
+                            }
+                            codeInput.addEventListener('input', updateFull);
+                            updateFull();
+                        })();
+                        </script>
+                    <?php endif; ?>
                 </div>
 
                 <div class="swat-field">
@@ -601,7 +664,7 @@ $is_custom_cp = ($cp_id != $current_user_id || $cp_contact);
             <div>
                 <label class="swat-btn swat-btn-secondary" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
                     <i class="fas fa-upload"></i> Upload Image / העלה תמונה
-                    <input type="file" id="swat-img-upload" accept="image/*" style="display:none;">
+                    <input type="file" id="swat-img-upload" accept="image/*" style="display:none;" multiple>
                 </label>
                 <span id="swat-upload-status" style="font-size:0.82rem;margin-left:10px;"></span>
             </div>
@@ -654,8 +717,8 @@ $is_custom_cp = ($cp_id != $current_user_id || $cp_contact);
             <a href="swatform.php?action=edit&id=<?= $form_id ?>" class="swat-btn swat-btn-primary">
                 <i class="fas fa-edit"></i> Edit
             </a>
-            <a href="swatpdf.php?id=<?= $form_id ?>&lang=en" class="swat-btn swat-btn-pdf">
-                <i class="fas fa-file-word"></i> Download RTF
+            <a href="swatpdf.php?id=<?= $form_id ?>&lang=both" class="swat-btn swat-btn-pdf">
+                <i class="fas fa-file-pdf"></i> PDF (EN + עב)
             </a>
         </div>
     </div>
@@ -837,20 +900,29 @@ document.addEventListener('DOMContentLoaded', function () {
     var upInput = document.getElementById('swat-img-upload');
     if (upInput) {
         upInput.addEventListener('change', function() {
-            if (!this.files[0]) return;
+            var files = Array.from(this.files);
+            if (!files.length) return;
             var status = document.getElementById('swat-upload-status');
-            status.textContent = 'Uploading...';
-            var fd = new FormData();
-            fd.append('image', this.files[0]);
-            fd.append('form_id', formId);
-            fd.append('_glpi_csrf_token', document.querySelector('input[name="_glpi_csrf_token"]').value);
-            fetch(root + '/ajax/upload_image.php', { method:'POST', body: fd })
-                .then(function(r){ return r.json(); })
-                .then(function(d){
-                    if (d.success) { status.textContent = '✓ Uploaded'; loadAttachments(); }
-                    else { status.textContent = '✗ ' + (d.error||'Failed'); }
-                    setTimeout(function(){ status.textContent = ''; }, 3000);
-                });
+            var token  = document.querySelector('input[name="_glpi_csrf_token"]').value;
+            status.textContent = 'Uploading ' + files.length + ' photo(s)...';
+            var promises = files.map(function(file) {
+                var fd = new FormData();
+                fd.append('image', file);
+                fd.append('form_id', formId);
+                fd.append('_glpi_csrf_token', token);
+                return fetch(root + '/ajax/upload_image.php', { method:'POST', body: fd })
+                    .then(function(r){ return r.json(); });
+            });
+            Promise.all(promises).then(function(results) {
+                var failed = results.filter(function(d){ return !d.success; });
+                if (failed.length === 0) {
+                    status.textContent = '✓ ' + files.length + ' photo(s) uploaded';
+                } else {
+                    status.textContent = '✗ ' + failed.length + ' failed of ' + files.length;
+                }
+                loadAttachments();
+                setTimeout(function(){ status.textContent = ''; }, 3500);
+            });
             this.value = '';
         });
     }

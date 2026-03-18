@@ -16,12 +16,24 @@ $is_admin          = Session::haveRight('plugin_swat_admin', READ);
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['swat_action'])) {
     global $DB;
     $fid = (int)($_POST['form_id'] ?? 0);
-    if ($fid && Session::haveRight('plugin_swat_form', UPDATE)) {
+    if (Session::haveRight('plugin_swat_form', UPDATE)) {
         switch ($_POST['swat_action']) {
             case 'set_status':
-                $new_status = in_array($_POST['status'] ?? '', ['submitted','archived'])
-                    ? $_POST['status'] : 'submitted';
-                $DB->update('glpi_plugin_swat_forms', ['status' => $new_status], ['id' => $fid]);
+                if ($fid) {
+                    $new_status = in_array($_POST['status'] ?? '', ['submitted','archived'])
+                        ? $_POST['status'] : 'submitted';
+                    $DB->update('glpi_plugin_swat_forms', ['status' => $new_status], ['id' => $fid]);
+                }
+                break;
+            case 'archive_permit':
+                $permit_num = $_POST['permit_number'] ?? '';
+                if ($permit_num) {
+                    $DB->update(
+                        'glpi_plugin_swat_forms',
+                        ['status' => 'archived'],
+                        ['work_permit_ref' => $permit_num, 'is_deleted' => 0]
+                    );
+                }
                 break;
         }
     }
@@ -98,7 +110,7 @@ $root = Plugin::getWebDir('swat');
     <h1>
         <span class="swat-logo-text">SWAT</span>
         <span style="font-size:1.1rem;font-weight:400;">
-            My Dashboard &nbsp;|&nbsp; <?= htmlspecialchars($current_user_name) ?>
+            Start Work Assessment Tool &nbsp;|&nbsp; <?= htmlspecialchars($current_user_name) ?>
         </span>
     </h1>
     <div class="swat-header-actions">
@@ -222,11 +234,35 @@ $root = Plugin::getWebDir('swat');
                 <?= $p_archive ?> archived
             </span>
             <?php if ($permit !== '—'): ?>
-            <a href="swatform.php?action=new&permit=<?= urlencode($permit) ?>"
+            <?php
+                // Get latest form ID for this permit to allow copying
+                $latest_form_id = 0;
+                foreach ($pforms as $pf) {
+                    if ((int)$pf['id'] > $latest_form_id) $latest_form_id = (int)$pf['id'];
+                }
+                $new_form_url = 'swatform.php?action=new&permit=' . urlencode($permit)
+                    . ($latest_form_id ? '&copy_from=' . $latest_form_id : '');
+            ?>
+            <a href="<?= $new_form_url ?>"
                class="swat-btn swat-btn-secondary" style="padding:3px 8px;font-size:0.75rem;"
-               title="New form for this permit">
+               title="New form for this permit (pre-filled from last form)">
                 <i class="fas fa-plus"></i>
             </a>
+            <?php if ($p_active > 0): ?>
+            <form method="POST" action="swatdashboard.php" style="display:inline;"
+                  onsubmit="return confirm('Archive all <?= $p_active ?> active form(s) under permit <?= htmlspecialchars($permit) ?>?\nכל הטפסים הפעילים יועברו לארכיון.');">
+                <?php echo Html::hidden('_glpi_csrf_token', ['value' => Session::getNewCSRFToken()]); ?>
+                <input type="hidden" name="swat_action"    value="archive_permit">
+                <input type="hidden" name="permit_number"  value="<?= htmlspecialchars($permit) ?>">
+                <input type="hidden" name="tab"            value="<?= htmlspecialchars($tab) ?>">
+                <input type="hidden" name="subtab"         value="<?= htmlspecialchars($subtab) ?>">
+                <button type="submit" class="swat-btn swat-btn-secondary"
+                        style="padding:3px 8px;font-size:0.75rem;background:#f59e0b;border:none;border-radius:4px;color:#fff;cursor:pointer;"
+                        title="Archive all forms under this permit / ארכב את כל הטפסים">
+                    <i class="fas fa-archive"></i>
+                </button>
+            </form>
+            <?php endif; ?>
             <?php endif; ?>
             <i class="fas fa-chevron-right" style="color:#ccc;cursor:pointer;"
                onclick="setFilter('permit',<?= json_encode($permit === '—' ? '' : $permit) ?>)"></i>
@@ -316,9 +352,9 @@ $root = Plugin::getWebDir('swat');
                 <a href="swatform.php?action=edit&id=<?= $f['id'] ?>"
                    class="swat-btn swat-btn-primary" style="padding:4px 8px;font-size:0.78rem;"
                    title="Edit"><i class="fas fa-edit"></i></a>
-                <a href="swatpdf.php?id=<?= $f['id'] ?>&lang=en"
+                <a href="swatpdf.php?id=<?= $f['id'] ?>&lang=both"
                    class="swat-btn swat-btn-pdf" style="padding:4px 8px;font-size:0.78rem;"
-                   title="Download PDF"><i class="fas fa-file-word"></i></a>
+                   title="PDF (EN + עב)"><i class="fas fa-file-pdf"></i></a>
             </td>
         </tr>
         <?php endforeach; ?>

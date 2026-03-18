@@ -84,28 +84,36 @@ class PluginSwatProfile extends CommonDBTM {
         if ($can_edit) {
             $ajax_url = Plugin::getWebDir('swat', false) . '/ajax/saverights.php';
             $token    = Session::getNewCSRFToken();
+            // Save button
+            echo '<div style="padding:12px 16px;">'
+               . '<button type="button" id="swat-save-rights-btn"'
+               . ' style="background:#006B6B;color:#C8E000;border:none;border-radius:5px;padding:8px 22px;font-size:0.9rem;font-weight:700;cursor:pointer;">'
+               . '<i class="fas fa-save me-1"></i> Save Permissions / שמור הרשאות'
+               . '</button></div>';
             echo "<script>
-            document.querySelectorAll('.swat-right-cb').forEach(function(cb){
-                cb.addEventListener('change', function(){
-                    var field = this.dataset.field;
-                    var pid   = this.dataset.profilesId;
+            function swatSaveAllRights() {
+                var ajaxUrl = '{$ajax_url}';
+                var token   = '{$token}';
+                var fields  = ['plugin_swat_form','plugin_swat_admin'];
+                var promises = fields.map(function(field) {
                     var total = 0;
                     document.querySelectorAll('.swat-right-cb[data-field=\"'+field+'\"]').forEach(function(c){
                         if(c.checked) total |= parseInt(c.dataset.bit);
                     });
-                    fetch('{$ajax_url}',{
+                    var pid = (document.querySelector('.swat-right-cb[data-field=\"'+field+'\"]')||{}).dataset?.profilesId || '{$profiles_id}';
+                    return fetch(ajaxUrl,{
                         method:'POST',
                         headers:{'Content-Type':'application/x-www-form-urlencoded'},
-                        body:'_glpi_csrf_token='+encodeURIComponent('{$token}')+'&profiles_id='+pid+'&field='+encodeURIComponent(field)+'&rights='+total
-                    }).then(function(r){ return r.json(); }).then(function(d){
-                        if(d.success){
-                            var s=document.getElementById('swat-rights-status');
-                            s.style.display='block';
-                            setTimeout(function(){ s.style.display='none'; }, 2000);
-                        }
-                    });
+                        body:'_glpi_csrf_token='+encodeURIComponent(token)+'&profiles_id='+pid+'&field='+encodeURIComponent(field)+'&rights='+total
+                    }).then(function(r){ return r.json(); });
                 });
-            });
+                Promise.all(promises).then(function(){
+                    var s=document.getElementById('swat-rights-status');
+                    s.style.display='block';
+                    setTimeout(function(){ s.style.display='none'; }, 2500);
+                });
+            }
+            document.getElementById('swat-save-rights-btn').addEventListener('click', swatSaveAllRights);
             </script>";
         }
     }

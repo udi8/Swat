@@ -62,6 +62,16 @@ class PluginSwatForm extends CommonDBTM {
             // Build participants JSON is handled separately
             $hazards_controls = json_encode($post['hazards_controls'] ?? [], JSON_UNESCAPED_UNICODE);
 
+            // Validate date and time formats
+            $raw_date = $post['form_date'] ?? date('Y-m-d');
+            $raw_time = $post['form_time'] ?? date('H:i:s');
+            if (!empty($raw_date) && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $raw_date)) {
+                $raw_date = date('Y-m-d');
+            }
+            if (!empty($raw_time) && !preg_match('/^\d{2}:\d{2}(:\d{2})?$/', $raw_time)) {
+                $raw_time = date('H:i:s');
+            }
+
             $data = [
                 'permits_id'             => $permits_id,
                 'users_id_cp'            => $cp_users_id,
@@ -69,8 +79,8 @@ class PluginSwatForm extends CommonDBTM {
                 'site_location'          => $post['site_location']       ?? '',
                 'correct_unit'           => (int)($post['correct_unit']  ?? 0),
                 'work_permit_ref'        => $permit_number,
-                'form_date'              => $post['form_date']            ?? date('Y-m-d'),
-                'form_time'              => $post['form_time']            ?? date('H:i:s'),
+                'form_date'              => $raw_date,
+                'form_time'              => $raw_time,
                 'shift'                  => in_array($post['shift'] ?? '', ['day','night']) ? $post['shift'] : 'day',
                 'task_what'              => $post['task_what']            ?? '',
                 'task_how'               => $post['task_how']             ?? '',
@@ -137,18 +147,27 @@ class PluginSwatForm extends CommonDBTM {
 
             // Check if editing existing
             $form_id = (int)($post['form_id'] ?? 0);
-            if ($form_id > 0) {
-                unset($data['date_creation'], $data['users_id_creator']);
-                $DB->update('glpi_plugin_swat_forms', $data, ['id' => $form_id]);
-                PluginSwatLog::info('form_update', "Updated form #{$form_id}", $form_id);
-            } else {
-                $DB->insert('glpi_plugin_swat_forms', $data);
-                $form_id = $DB->insertId();
-                PluginSwatLog::info('form_create', "Created new form #{$form_id}", $form_id, ['permit' => $permit_number]);
-            }
 
-            // Save participants
-            self::saveParticipants($form_id, $post['participants'] ?? []);
+            $DB->beginTransaction();
+            try {
+                if ($form_id > 0) {
+                    unset($data['date_creation'], $data['users_id_creator']);
+                    $DB->update('glpi_plugin_swat_forms', $data, ['id' => $form_id]);
+                    PluginSwatLog::info('form_update', "Updated form #{$form_id}", $form_id);
+                } else {
+                    $DB->insert('glpi_plugin_swat_forms', $data);
+                    $form_id = $DB->insertId();
+                    PluginSwatLog::info('form_create', "Created new form #{$form_id}", $form_id, ['permit' => $permit_number]);
+                }
+
+                // Save participants
+                self::saveParticipants($form_id, $post['participants'] ?? []);
+
+                $DB->commit();
+            } catch (\Throwable $e) {
+                $DB->rollBack();
+                throw $e;
+            }
 
             return ['success' => true, 'form_id' => $form_id];
 

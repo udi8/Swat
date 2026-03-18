@@ -50,7 +50,6 @@ class PluginSwatDashboard extends CommonGLPI {
 
     public static function canView() {
         return Session::haveRight(static::$rightname, READ)
-            || Session::isCron()
-            || isset($_SESSION['glpiactiveprofile']['interface']);
+            || Session::isCron();
     }
 }

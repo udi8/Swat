@@ -78,29 +78,47 @@
         }
     };
 
-    SWAT._searchSignoff = function (inputEl, q) {
+    // Generic autocomplete helper used by _searchSignoff, _searchPeople, _searchCP
+    // onSelect(item, dd): called when user picks an item
+    // appendDropdown(dd): called to insert the dropdown into the DOM
+    // closeDropdown(): called to close any existing dropdown before showing new one
+    SWAT._searchAutocomplete = function (inputEl, ddId, q, onSelect, appendDropdown, closeDropdown) {
         const ajaxUrl = window.CFG_GLPI?.root_doc + '/plugins/swat/ajax/getusers.php';
         fetch(`${ajaxUrl}?term=${encodeURIComponent(q)}&type=all`)
             .then(r => r.json())
             .then(data => {
-                SWAT._closeSignoffDropdown();
+                closeDropdown();
                 if (!data.length) return;
-                const wrap = inputEl.parentElement;
                 const dd = document.createElement('div');
                 dd.className = 'swat-autocomplete-dropdown';
-                dd.id = 'swat-signoff-dd';
+                if (ddId) dd.id = ddId;
                 data.forEach(item => {
                     const div = document.createElement('div');
                     div.className = 'item';
-                    div.innerHTML = `${item.display_name} <span class="type-badge ${item.type}">${item.type}</span>`;
-                    div.addEventListener('mousedown', () => {
-                        inputEl.value = item.display_name;
-                        dd.remove();
-                    });
+                    // Safe DOM construction – avoid innerHTML with API data
+                    const nameNode = document.createTextNode(item.display_name + ' ');
+                    const badge = document.createElement('span');
+                    badge.className = 'type-badge ' + item.type;
+                    badge.textContent = item.type;
+                    div.appendChild(nameNode);
+                    div.appendChild(badge);
+                    div.addEventListener('mousedown', () => onSelect(item, dd));
                     dd.appendChild(div);
                 });
-                wrap.appendChild(dd);
-            }).catch(() => {});
+                appendDropdown(dd);
+            })
+            .catch(err => console.warn('SWAT fetch error:', err));
+    };
+
+    SWAT._searchSignoff = function (inputEl, q) {
+        SWAT._searchAutocomplete(inputEl, 'swat-signoff-dd', q, function (item, dd) {
+            inputEl.value = item.display_name;
+            dd.remove();
+        }, function (dd) {
+            inputEl.parentElement.appendChild(dd);
+        }, function () {
+            SWAT._closeSignoffDropdown();
+        });
     };
 
     SWAT._closeSignoffDropdown = function () {
@@ -108,41 +126,22 @@
     };
 
     SWAT._searchPeople = function (inputEl, q, row) {
-        const ajaxUrl = window.CFG_GLPI?.root_doc + '/plugins/swat/ajax/getusers.php';
-        fetch(`${ajaxUrl}?term=${encodeURIComponent(q)}&type=all`)
-            .then(r => r.json())
-            .then(data => SWAT._showDropdown(inputEl, data, row))
-            .catch(() => {});
-    };
-
-    SWAT._showDropdown = function (inputEl, items, row) {
-        SWAT._closeDropdown(inputEl);
-        if (!items.length) return;
-
-        const wrap = inputEl.closest('.swat-participant-input');
-        const dd = document.createElement('div');
-        dd.className = 'swat-autocomplete-dropdown';
-
-        items.forEach(item => {
-            const div = document.createElement('div');
-            div.className = 'item';
-            div.innerHTML = `${item.display_name} <span class="type-badge ${item.type}">${item.type}</span>`;
-            div.addEventListener('mousedown', () => {
-                inputEl.value = item.display_name;
-                row.dataset.itemsId    = item.id;
-                row.dataset.itemType   = item.type;
-                row.dataset.displayName = item.display_name;
-                // Update hidden fields
-                row.querySelector('.hidden-items-id')    && (row.querySelector('.hidden-items-id').value    = item.id);
-                row.querySelector('.hidden-item-type')   && (row.querySelector('.hidden-item-type').value   = item.type);
-                row.querySelector('.hidden-display-name')&& (row.querySelector('.hidden-display-name').value = item.display_name);
-                row.querySelector('.swat-participant-type').textContent = `(${item.type})`;
-                dd.remove();
-            });
-            dd.appendChild(div);
+        SWAT._searchAutocomplete(inputEl, null, q, function (item, dd) {
+            inputEl.value = item.display_name;
+            row.dataset.itemsId    = item.id;
+            row.dataset.itemType   = item.type;
+            row.dataset.displayName = item.display_name;
+            // Update hidden fields
+            row.querySelector('.hidden-items-id')    && (row.querySelector('.hidden-items-id').value    = item.id);
+            row.querySelector('.hidden-item-type')   && (row.querySelector('.hidden-item-type').value   = item.type);
+            row.querySelector('.hidden-display-name')&& (row.querySelector('.hidden-display-name').value = item.display_name);
+            row.querySelector('.swat-participant-type').textContent = `(${item.type})`;
+            dd.remove();
+        }, function (dd) {
+            inputEl.closest('.swat-participant-input').appendChild(dd);
+        }, function () {
+            SWAT._closeDropdown(inputEl);
         });
-
-        wrap.appendChild(dd);
     };
 
     SWAT._closeDropdown = function (inputEl) {
@@ -181,34 +180,19 @@
     };
 
     SWAT._searchCP = function (q) {
-        const ajaxUrl = window.CFG_GLPI?.root_doc + '/plugins/swat/ajax/getusers.php';
-        fetch(`${ajaxUrl}?term=${encodeURIComponent(q)}&type=all`)
-            .then(r => r.json())
-            .then(data => SWAT._showCPDropdown(data))
-            .catch(() => {});
-    };
-
-    SWAT._showCPDropdown = function (items) {
-        SWAT._closeCPDropdown();
-        if (!items.length) return;
-        const wrap = document.getElementById('swat-cp-override-wrap');
-        if (!wrap) return;
-        const dd = document.createElement('div');
-        dd.id = 'swat-cp-dropdown';
-        dd.className = 'swat-autocomplete-dropdown';
-        items.forEach(item => {
-            const div = document.createElement('div');
-            div.className = 'item';
-            div.innerHTML = `${item.display_name} <span class="type-badge ${item.type}">${item.type}</span>`;
-            div.addEventListener('mousedown', () => {
-                document.getElementById('swat-cp-input').value       = item.display_name;
-                document.getElementById('swat-cp-userid').value      = item.id;
-                document.getElementById('swat-cp-iscontact').value   = item.type === 'contact' ? '1' : '0';
-                dd.remove();
-            });
-            dd.appendChild(div);
+        const cpInput = document.getElementById('swat-cp-input');
+        if (!cpInput) return;
+        SWAT._searchAutocomplete(cpInput, 'swat-cp-dropdown', q, function (item, dd) {
+            document.getElementById('swat-cp-input').value       = item.display_name;
+            document.getElementById('swat-cp-userid').value      = item.id;
+            document.getElementById('swat-cp-iscontact').value   = item.type === 'contact' ? '1' : '0';
+            dd.remove();
+        }, function (dd) {
+            const wrap = document.getElementById('swat-cp-override-wrap');
+            if (wrap) wrap.appendChild(dd);
+        }, function () {
+            SWAT._closeCPDropdown();
         });
-        wrap.appendChild(dd);
     };
 
     SWAT._closeCPDropdown = function () {

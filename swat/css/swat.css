@@ -15,6 +15,13 @@
   --swat-warn:    #f57c00;
   --swat-radius:  8px;
   --swat-shadow:  0 2px 8px rgba(0,0,0,0.12);
+  --swat-color-muted:          #666;
+  --swat-color-muted-dark:     #555;
+  --swat-color-hover-bg:       #f0fafa;
+  --swat-color-warning-bg:     #fffde7;
+  --swat-color-warning-border: #ffe082;
+  --swat-radius-sm: 5px;
+  --swat-radius-md: 8px;
 }
 
 /* ── Layout ───────────────────────────────────────────────── */
@@ -87,7 +94,7 @@
   margin-bottom: 4px;
 }
 .swat-label .en { font-weight: 600; font-size: 0.9rem; color: var(--swat-teal); }
-.swat-label .he { font-size: 0.82rem; color: #666; direction: rtl; }
+.swat-label .he { font-size: 0.82rem; color: var(--swat-color-muted); direction: rtl; }
 
 .swat-input,
 .swat-select,
@@ -107,6 +114,13 @@
   outline: none;
   border-color: var(--swat-teal);
   box-shadow: 0 0 0 3px rgba(0,107,107,0.12);
+}
+.swat-input:focus-visible,
+.swat-textarea:focus-visible,
+.swat-select:focus-visible,
+.btn:focus-visible {
+  outline: 2px solid var(--swat-lime);
+  outline-offset: 2px;
 }
 .swat-textarea { resize: vertical; min-height: 70px; }
 
@@ -134,7 +148,7 @@
   font-weight: 600;
   transition: background 0.2s, color 0.2s;
   background: var(--swat-white);
-  color: #555;
+  color: var(--swat-color-muted-dark);
   border: none;
 }
 .swat-yesno input:checked + label.yes { background: var(--swat-success); color: #fff; }
@@ -158,7 +172,7 @@
   background: var(--swat-white);
   user-select: none;
 }
-.swat-lsr-item:hover { border-color: var(--swat-teal); background: #f0fafa; transform: translateY(-1px); }
+.swat-lsr-item:hover { border-color: var(--swat-teal); background: var(--swat-color-hover-bg); transform: translateY(-1px); }
 .swat-lsr-item.checked { border-color: var(--swat-lime); background: #f5ffb0; }
 .swat-lsr-item.checked::after {
   content: '✓';
@@ -171,7 +185,7 @@
 .swat-lsr-item input[type=checkbox] { display: none; }
 .swat-lsr-icon { width: 64px; height: 64px; display: block; margin: 0 auto 6px; }
 .swat-lsr-name-en { font-size: 0.78rem; font-weight: 700; color: var(--swat-teal); line-height: 1.2; }
-.swat-lsr-name-he { font-size: 0.72rem; color: #666; direction: rtl; margin-top: 2px; }
+.swat-lsr-name-he { font-size: 0.72rem; color: var(--swat-color-muted); direction: rtl; margin-top: 2px; }
 
 /* ── Hazards checklist ────────────────────────────────────── */
 .swat-hazards-grid {
@@ -188,10 +202,10 @@
   cursor: pointer;
   transition: background 0.15s;
 }
-.swat-hazard-item:hover { background: #f0fafa; }
+.swat-hazard-item:hover { background: var(--swat-color-hover-bg); }
 .swat-hazard-item input[type=checkbox] { accent-color: var(--swat-teal); width: 15px; height: 15px; cursor: pointer; flex-shrink: 0; }
 .swat-hazard-label .en { font-size: 0.83rem; font-weight: 600; }
-.swat-hazard-label .he { font-size: 0.75rem; color: #666; direction: rtl; display: block; }
+.swat-hazard-label .he { font-size: 0.75rem; color: var(--swat-color-muted); direction: rtl; display: block; }
 
 /* ── Participants autocomplete ────────────────────────────── */
 .swat-participants-list { display: flex; flex-direction: column; gap: 6px; }
@@ -266,8 +280,8 @@
   gap: 16px;
   align-items: flex-end;
   flex-wrap: wrap;
-  background: #fffde7;
-  border: 1px solid #ffe082;
+  background: var(--swat-color-warning-bg);
+  border: 1px solid var(--swat-color-warning-border);
   border-radius: 6px;
   padding: 12px 16px;
   margin-top: 10px;
@@ -389,7 +403,7 @@
   white-space: nowrap;
 }
 .swat-forms-table td { padding: 8px 12px; border-bottom: 1px solid #eee; vertical-align: middle; }
-.swat-forms-table tr:hover td { background: #f0fafa; }
+.swat-forms-table tr:hover td { background: var(--swat-color-hover-bg); }
 .swat-status-badge {
   display: inline-block;
   padding: 2px 9px;
@@ -522,7 +536,7 @@
     .swat-header-actions { width: 100%; display: flex; flex-wrap: wrap; gap: 6px; }
     .swat-header-actions .swat-btn { flex: 1; text-align: center; min-width: 90px; }
 
-    .swat-stats-row { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .swat-stats-row { gap: 8px; }
 
     .swat-grid-2 { grid-template-columns: 1fr; }
 
@@ -545,7 +559,7 @@
     .swat-header h1 { font-size: 1.1rem; }
     .swat-header-actions .swat-btn { padding: 8px 10px; font-size: 0.82rem; }
 
-    .swat-stats-row { grid-template-columns: repeat(2, 1fr); gap: 6px; }
+    .swat-stats-row { gap: 6px; }
     .swat-stat-box { padding: 12px 8px; }
     .stat-num { font-size: 1.6rem; }
 

@@ -246,6 +246,10 @@ $root = Plugin::getWebDir('swat');
         <?php
             $p_active  = count(array_filter($pforms, fn($f)=>$f['status']==='submitted'));
             $p_archive = count(array_filter($pforms, fn($f)=>in_array($f['status'],['archived','closed'])));
+            // In active subtab show only permits with at least 1 active form;
+            // in archive subtab show only permits that have at least 1 archived form.
+            if ($subtab === 'active'  && $p_active  === 0) continue;
+            if ($subtab === 'archive' && $p_archive === 0) continue;
         ?>
         <div class="swat-permit-row" data-permit="<?= htmlspecialchars($permit) ?>" style="
             display:flex;align-items:center;gap:12px;

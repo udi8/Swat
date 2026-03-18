@@ -83,10 +83,8 @@ class PluginSwatProfile extends CommonDBTM {
 
         if ($can_edit) {
             global $CFG_GLPI;
-            $ajax_url    = $CFG_GLPI['root_doc'] . '/plugins/swat/ajax/saverights.php';
-            // Each CSRF token is single-use in GLPI – generate one per field
-            $token_form  = Session::getNewCSRFToken();
-            $token_admin = Session::getNewCSRFToken();
+            $ajax_url = $CFG_GLPI['root_doc'] . '/plugins/swat/ajax/saverights.php';
+            $csrf_url = $CFG_GLPI['root_doc'] . '/plugins/swat/ajax/get_csrf.php';
             // Save button
             echo '<div style="padding:12px 16px;">'
                . '<button type="button" id="swat-save-rights-btn"'
@@ -95,33 +93,50 @@ class PluginSwatProfile extends CommonDBTM {
                . '</button></div>';
             echo "<script>
             (function(){
-                var ajaxUrl    = '{$ajax_url}';
-                var pid        = '{$profiles_id}';
-                var tokenForm  = '{$token_form}';
-                var tokenAdmin = '{$token_admin}';
-                function saveField(field, token) {
-                    var total = 0;
-                    document.querySelectorAll('.swat-right-cb[data-field=\"'+field+'\"]').forEach(function(c){
-                        if(c.checked) total |= parseInt(c.dataset.bit);
-                    });
-                    return fetch(ajaxUrl,{
-                        method:'POST',
-                        headers:{'Content-Type':'application/x-www-form-urlencoded'},
-                        body:'_glpi_csrf_token='+encodeURIComponent(token)
-                            +'&profiles_id='+pid
-                            +'&field='+encodeURIComponent(field)
-                            +'&rights='+total
-                    }).then(function(r){ return r.json(); });
+                var ajaxUrl = '{$ajax_url}';
+                var csrfUrl = '{$csrf_url}';
+                var pid     = '{$profiles_id}';
+                // Fetch a fresh single-use CSRF token then POST the rights for one field
+                function saveField(field) {
+                    return fetch(csrfUrl)
+                        .then(function(r){ return r.json(); })
+                        .then(function(d) {
+                            var total = 0;
+                            document.querySelectorAll('.swat-right-cb[data-field=\"'+field+'\"]').forEach(function(c){
+                                if(c.checked) total |= parseInt(c.dataset.bit);
+                            });
+                            return fetch(ajaxUrl, {
+                                method:'POST',
+                                headers:{'Content-Type':'application/x-www-form-urlencoded'},
+                                body:'_glpi_csrf_token='+encodeURIComponent(d.token)
+                                    +'&profiles_id='+pid
+                                    +'&field='+encodeURIComponent(field)
+                                    +'&rights='+total
+                            });
+                        })
+                        .then(function(r){ return r.json(); });
                 }
                 document.getElementById('swat-save-rights-btn').addEventListener('click', function(){
-                    // Sequential saves – each uses its own unique CSRF token
-                    saveField('plugin_swat_form', tokenForm)
-                        .then(function(){ return saveField('plugin_swat_admin', tokenAdmin); })
+                    var btn = this;
+                    var s   = document.getElementById('swat-rights-status');
+                    btn.disabled = true;
+                    s.style.color = '';
+                    s.style.display = 'none';
+                    // Sequential saves – each gets a fresh CSRF token
+                    saveField('plugin_swat_form')
+                        .then(function(){ return saveField('plugin_swat_admin'); })
                         .then(function(){
-                            var s = document.getElementById('swat-rights-status');
-                            s.style.display='block';
+                            s.textContent = '✓ Saved / נשמר';
+                            s.style.color = '#065f46';
+                            s.style.display = 'block';
                             setTimeout(function(){ s.style.display='none'; }, 2500);
-                        });
+                        })
+                        .catch(function(e){
+                            s.textContent = '✗ Error: ' + (e.message || 'unknown');
+                            s.style.color = '#dc2626';
+                            s.style.display = 'block';
+                        })
+                        .finally(function(){ btn.disabled = false; });
                 });
             })();
             </script>";

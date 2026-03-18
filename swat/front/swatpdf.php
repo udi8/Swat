@@ -153,7 +153,7 @@ $pdf->form_id = $fid;
 $pdf->SetCreator('SWAT Plugin');
 $pdf->SetTitle("SWAT Form #{$fid}");
 $pdf->SetMargins(10, 10, 10);
-$pdf->SetAutoPageBreak(true, 12);
+$pdf->SetAutoPageBreak(false); // pages managed manually
 $pdf->setPrintHeader(false);
 $pdf->SetFont('dejavusans', '', 8);
 if ($IS_HE) $pdf->setRTL(false); // We control RTL per cell
@@ -263,9 +263,9 @@ function cbx(TCPDF $p, float $x, float $y, float $sz, bool $checked): void {
     }
 }
 
-// Ensure space - add page if needed
-function ensureSpace(TCPDF $p, float $y, float $needed, float $pageH = 270): float {
-    if ($p->getPage() >= 3) return $y; // max 3 pages
+// Ensure space - add page if needed (max_page = page limit for this render pass)
+function ensureSpace(TCPDF $p, float $y, float $needed, float $pageH = 270, int $max_page = 3): float {
+    if ($p->getPage() >= $max_page) return $y;
     if ($y + $needed > $pageH) {
         $p->AddPage();
         return 10;
@@ -305,8 +305,10 @@ function mottoBar(TCPDF $p, float $x, float $y, float $w, bool $isHe): float {
 // ── Page-rendering function (called once for EN, twice for combined EN+HE) ─
 function swat_render_pages(
     SWAT_PDF $pdf, bool $IS_HE, array $L, array $form, int $fid,
-    string $cp, string $pics, array $LSR, array $HAZARDS, array $DOCS
+    string $cp, string $pics, array $LSR, array $HAZARDS, array $DOCS,
+    int $page_offset = 0
 ): void {
+    $max_page = $page_offset + 2; // allow 2 pages per language render
 
 // ── PAGE 1 ─────────────────────────────────────────────────────────────────
 $pdf->AddPage();
@@ -369,7 +371,7 @@ textbox($pdf,$x0+$hw,$y,$hw,$TH,$form['task_detail']??'',$IS_HE);
 $y+=$TH+2;
 
 // ── Section 3: Life Saving Rules ───────────────────────────────────────────
-$y = ensureSpace($pdf,$y,52);
+$y = ensureSpace($pdf,$y,52,270,$max_page);
 $y = sectionBar($pdf,$x0,$y,$W,$L['lsr']);
 $n=count($LSR); $cw=$W/$n; $BXH=30; $ICH=16;
 foreach($LSR as $i=>[$key,$icon,$en_t,$he_t]){
@@ -405,7 +407,7 @@ foreach($LSR as $i=>[$key,$icon,$en_t,$he_t]){
 $y+=$BXH+2;
 
 // ── Section 4: Other Hazards ───────────────────────────────────────────────
-$y = ensureSpace($pdf,$y,80);
+$y = ensureSpace($pdf,$y,80,270,$max_page);
 $y = sectionBar($pdf,$x0,$y,$W,$L['other_haz']);
 $COLS=4; $hcw=$W/$COLS; $HH=10; $CBS=3.5;
 foreach(array_chunk($HAZARDS,$COLS) as $ri=>$row_items){
@@ -443,7 +445,7 @@ if($others){
 $y+=2;
 
 // ── Section 5: CP & Participants ───────────────────────────────────────────
-$y = ensureSpace($pdf,$y,80);
+$y = ensureSpace($pdf,$y,80,270,$max_page);
 $y = sectionBar($pdf,$x0,$y,$W,$L['cp_part']);
 $CPH=14;
 fc($pdf,224,240,240); dc($pdf,0,107,107); $pdf->SetLineWidth(0.6);
@@ -491,7 +493,7 @@ $pdf->Cell($W-26,7,"Form #{$fid}  |  Permit: ".($form['work_permit_ref']??'')
 $y+=14;
 
 // ── Section 6: Guiding Documents ──────────────────────────────────────────
-$y = ensureSpace($pdf,$y,40);
+$y = ensureSpace($pdf,$y,40,270,$max_page);
 $y = sectionBar($pdf,$x0,$y,$W,$L['guiding_docs']);
 $DC=3; $dcw=$W/$DC; $DH=12;
 foreach(array_chunk($DOCS,$DC) as $ri=>$row_items){
@@ -527,7 +529,7 @@ if($form['doc_other']??''){
 $y+=2;
 
 // ── Section 8: Hazard & Controls ──────────────────────────────────────────
-$y = ensureSpace($pdf,$y,70);
+$y = ensureSpace($pdf,$y,70,270,$max_page);
 $y = sectionBar($pdf,$x0,$y,$W,$L['hc_title']);
 // PPE note
 fc($pdf,244,248,248); dc($pdf,184,206,206);
@@ -561,7 +563,7 @@ for($i=0;$i<$nrows;$i++){
 $y+=2;
 
 // ── Section 9: Task Refocus ────────────────────────────────────────────────
-$y = ensureSpace($pdf,$y,30);
+$y = ensureSpace($pdf,$y,30,270,$max_page);
 $y = sectionBar($pdf,$x0,$y,$W,$L['refocus']);
 $rfw=$W/3; $RFH=14;
 fc($pdf,255,253,231); $pdf->Rect($x0,$y,$W,$RFH,'F');
@@ -576,7 +578,7 @@ foreach([['refocus1_time',1],['refocus2_time',2],['refocus3_time',3]] as [$key,$
 $y+=$RFH+2;
 
 // ── Section 10: Close Out ──────────────────────────────────────────────────
-$y = ensureSpace($pdf,$y,70);
+$y = ensureSpace($pdf,$y,70,270,$max_page);
 $y = sectionBar($pdf,$x0,$y,$W,$L['closeout']);
 $tc=(bool)($form['closeout_task_complete']??0);
 $eh=(bool)($form['closeout_ehs_events']??0);
@@ -669,10 +671,11 @@ function swat_build_L(bool $IS_HE): array {
 
 // ── Render pages ───────────────────────────────────────────────────────────
 if ($LANG_BOTH) {
-    swat_render_pages($pdf, false, swat_build_L(false), $form, $fid, $cp, $pics, $LSR, $HAZARDS, $DOCS);
-    swat_render_pages($pdf, true,  swat_build_L(true),  $form, $fid, $cp, $pics, $LSR, $HAZARDS, $DOCS);
+    swat_render_pages($pdf, false, swat_build_L(false), $form, $fid, $cp, $pics, $LSR, $HAZARDS, $DOCS, 0);
+    $he_offset = $pdf->getPage(); // pages used by EN (typically 2)
+    swat_render_pages($pdf, true,  swat_build_L(true),  $form, $fid, $cp, $pics, $LSR, $HAZARDS, $DOCS, $he_offset);
 } else {
-    swat_render_pages($pdf, $IS_HE, $L, $form, $fid, $cp, $pics, $LSR, $HAZARDS, $DOCS);
+    swat_render_pages($pdf, $IS_HE, $L, $form, $fid, $cp, $pics, $LSR, $HAZARDS, $DOCS, 0);
 }
 
 // ── Output ─────────────────────────────────────────────────────────────────

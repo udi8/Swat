@@ -82,8 +82,10 @@ class PluginSwatProfile extends CommonDBTM {
         echo '<div id="swat-rights-status" style="padding:8px 16px;font-size:0.85rem;color:#065f46;display:none;">✓ Saved / נשמר</div>';
 
         if ($can_edit) {
-            $ajax_url = Plugin::getWebDir('swat', false) . '/ajax/saverights.php';
-            $token    = Session::getNewCSRFToken();
+            $ajax_url    = Plugin::getWebDir('swat', false) . '/ajax/saverights.php';
+            // Each CSRF token is single-use in GLPI – generate one per field
+            $token_form  = Session::getNewCSRFToken();
+            $token_admin = Session::getNewCSRFToken();
             // Save button
             echo '<div style="padding:12px 16px;">'
                . '<button type="button" id="swat-save-rights-btn"'
@@ -91,29 +93,36 @@ class PluginSwatProfile extends CommonDBTM {
                . '<i class="fas fa-save me-1"></i> Save Permissions / שמור הרשאות'
                . '</button></div>';
             echo "<script>
-            function swatSaveAllRights() {
-                var ajaxUrl = '{$ajax_url}';
-                var token   = '{$token}';
-                var fields  = ['plugin_swat_form','plugin_swat_admin'];
-                var promises = fields.map(function(field) {
+            (function(){
+                var ajaxUrl    = '{$ajax_url}';
+                var pid        = '{$profiles_id}';
+                var tokenForm  = '{$token_form}';
+                var tokenAdmin = '{$token_admin}';
+                function saveField(field, token) {
                     var total = 0;
                     document.querySelectorAll('.swat-right-cb[data-field=\"'+field+'\"]').forEach(function(c){
                         if(c.checked) total |= parseInt(c.dataset.bit);
                     });
-                    var pid = (document.querySelector('.swat-right-cb[data-field=\"'+field+'\"]')||{}).dataset?.profilesId || '{$profiles_id}';
                     return fetch(ajaxUrl,{
                         method:'POST',
                         headers:{'Content-Type':'application/x-www-form-urlencoded'},
-                        body:'_glpi_csrf_token='+encodeURIComponent(token)+'&profiles_id='+pid+'&field='+encodeURIComponent(field)+'&rights='+total
+                        body:'_glpi_csrf_token='+encodeURIComponent(token)
+                            +'&profiles_id='+pid
+                            +'&field='+encodeURIComponent(field)
+                            +'&rights='+total
                     }).then(function(r){ return r.json(); });
+                }
+                document.getElementById('swat-save-rights-btn').addEventListener('click', function(){
+                    // Sequential saves – each uses its own unique CSRF token
+                    saveField('plugin_swat_form', tokenForm)
+                        .then(function(){ return saveField('plugin_swat_admin', tokenAdmin); })
+                        .then(function(){
+                            var s = document.getElementById('swat-rights-status');
+                            s.style.display='block';
+                            setTimeout(function(){ s.style.display='none'; }, 2500);
+                        });
                 });
-                Promise.all(promises).then(function(){
-                    var s=document.getElementById('swat-rights-status');
-                    s.style.display='block';
-                    setTimeout(function(){ s.style.display='none'; }, 2500);
-                });
-            }
-            document.getElementById('swat-save-rights-btn').addEventListener('click', swatSaveAllRights);
+            })();
             </script>";
         }
     }

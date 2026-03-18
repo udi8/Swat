@@ -212,24 +212,12 @@ $is_custom_cp = ($cp_id != $current_user_id || $cp_contact);
                             <input type="text" id="swat-permit-code"
                                    placeholder="XXXXX"
                                    maxlength="20"
+                                   data-year="<?= $permit_year ?>"
                                    style="border:none;outline:none;padding:7px 6px;font-size:0.9rem;flex:1;min-width:60px;"
                                    value="<?= htmlspecialchars($permit_code) ?>"
                                    required>
                             <span style="padding:7px 8px;background:#f0f0f0;color:#555;font-size:0.9rem;font-weight:600;white-space:nowrap;border-left:1px solid #ccc;">-<?= $permit_year ?></span>
                         </div>
-                        <script>
-                        (function(){
-                            var codeInput = document.getElementById('swat-permit-code');
-                            var hiddenFull = document.getElementById('swat-permit-full');
-                            var year = '<?= $permit_year ?>';
-                            function updateFull() {
-                                var code = codeInput.value.trim().toUpperCase();
-                                hiddenFull.value = code ? 'TZA-' + code + '-' + year : '';
-                            }
-                            codeInput.addEventListener('input', updateFull);
-                            updateFull();
-                        })();
-                        </script>
                     <?php endif; ?>
                 </div>
 
@@ -676,15 +664,22 @@ $is_custom_cp = ($cp_id != $current_user_id || $cp_contact);
         </div>
     </div>
     <?php elseif ($is_view): ?>
-    <!-- View mode: show images -->
+    <!-- View mode: show images + allow upload -->
     <div class="swat-card" id="swat-images-section">
         <div class="swat-card-header">
             <i class="fas fa-camera"></i> Site Photos
             <span class="he">תמונות אתר</span>
         </div>
         <div class="swat-card-body">
-            <div id="swat-attachments-list" style="display:flex;flex-wrap:wrap;gap:10px;"></div>
+            <div id="swat-attachments-list" style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:10px;"></div>
             <div id="swat-no-photos" style="color:#aaa;font-size:0.85rem;display:none;">No photos attached / אין תמונות</div>
+            <div style="margin-top:8px;">
+                <label class="swat-btn swat-btn-secondary" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
+                    <i class="fas fa-upload"></i> Upload Photos / העלה תמונות
+                    <input type="file" id="swat-img-upload" accept="image/*" style="display:none;" multiple>
+                </label>
+                <span id="swat-upload-status" style="font-size:0.82rem;margin-left:10px;"></span>
+            </div>
         </div>
     </div>
     <?php endif; ?>
@@ -742,6 +737,19 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // Re-attach our own listeners on the fresh clone
     var freshForm = document.getElementById('swat-main-form');
+
+    // Permit code field – re-attach after clone and init hidden field
+    var permitCode = document.getElementById('swat-permit-code');
+    var permitFull = document.getElementById('swat-permit-full');
+    if (permitCode && permitFull) {
+        var permitYear = permitCode.dataset.year || String(new Date().getFullYear());
+        function updatePermitFull() {
+            var code = permitCode.value.trim().toUpperCase();
+            permitFull.value = code ? 'TZA-' + code + '-' + permitYear : '';
+        }
+        permitCode.addEventListener('input', updatePermitFull);
+        updatePermitFull(); // sync hidden field after clone
+    }
 
     // Wire up existing .swat-part-clear buttons (PHP-rendered rows)
     var partList = document.querySelector('.swat-participants-list');
@@ -876,7 +884,6 @@ document.addEventListener('DOMContentLoaded', function () {
                     lbl.textContent = att.filename;
                     div.appendChild(img);
                     div.appendChild(lbl);
-                    <?php if (!$is_view): ?>
                     var del = document.createElement('button');
                     del.textContent = '✕';
                     del.style.cssText = 'position:absolute;top:2px;right:2px;background:rgba(0,0,0,0.5);color:#fff;border:none;border-radius:50%;width:18px;height:18px;font-size:0.65rem;cursor:pointer;line-height:1;padding:0;';
@@ -890,7 +897,6 @@ document.addEventListener('DOMContentLoaded', function () {
                         }).then(function(){ loadAttachments(); });
                     };
                     div.appendChild(del);
-                    <?php endif; ?>
                     list.appendChild(div);
                 });
             });

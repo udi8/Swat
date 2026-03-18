@@ -12,6 +12,13 @@ $current_user_id   = (int) Session::getLoginUserID();
 $current_user_name = getUserName($current_user_id);
 $is_admin          = Session::haveRight('plugin_swat_admin', READ);
 
+// Get user's primary GLPI group name (for team display in header)
+$team_name = '';
+$gr = $DB->query("SELECT g.name FROM glpi_groups_users gu
+    INNER JOIN glpi_groups g ON g.id = gu.groups_id
+    WHERE gu.users_id = {$current_user_id} LIMIT 1");
+if ($gr && $row = $DB->fetchAssoc($gr)) { $team_name = $row['name']; }
+
 // ── Handle status change / archive ────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['swat_action'])) {
     global $DB;
@@ -110,7 +117,11 @@ $root = Plugin::getWebDir('swat');
     <h1>
         <span class="swat-logo-text">SWAT</span>
         <span style="font-size:1.1rem;font-weight:400;">
-            Start Work Assessment Tool &nbsp;|&nbsp; <?= htmlspecialchars($current_user_name) ?>
+            Start Work Assessment Tool
+            <?php if ($team_name): ?>
+            &nbsp;|&nbsp; <span style="color:#C8E000;"><?= htmlspecialchars($team_name) ?></span>
+            <?php endif; ?>
+            &nbsp;|&nbsp; <?= htmlspecialchars($current_user_name) ?>
         </span>
     </h1>
     <div class="swat-header-actions">

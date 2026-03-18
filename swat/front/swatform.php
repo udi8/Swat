@@ -861,6 +861,15 @@ document.addEventListener('DOMContentLoaded', function () {
         var root   = '<?= $root ?>';
         if (!formId) return;
 
+        // GLPI 10.0.6: for /ajax/ URLs the CSRF token must be in the
+        // X-GLPI-CSRF-TOKEN request header (not $_POST).
+        // The token is NOT consumed for /ajax/ calls (GLPI_KEEP_CSRF_TOKEN),
+        // so the same page-level token works for all sequential requests.
+        function glpiCsrfToken() {
+            var m = document.querySelector('meta[property="glpi:csrf_token"]');
+            return m ? m.getAttribute('content') : '';
+        }
+
         function loadAttachments() {
             fetch(root + '/ajax/get_attachments.php?form_id=' + formId)
                 .then(function(r){ return r.json(); })
@@ -888,16 +897,14 @@ document.addEventListener('DOMContentLoaded', function () {
                         del.style.cssText = 'position:absolute;top:2px;right:2px;background:rgba(0,0,0,0.5);color:#fff;border:none;border-radius:50%;width:18px;height:18px;font-size:0.65rem;cursor:pointer;line-height:1;padding:0;';
                         del.onclick = function(){
                             if (!confirm('Delete photo?')) return;
-                            fetch(root + '/ajax/get_csrf.php')
-                                .then(function(r){ return r.json(); })
-                                .then(function(d){
-                                    return fetch(root + '/ajax/delete_attachment.php', {
-                                        method:'POST',
-                                        headers:{'Content-Type':'application/x-www-form-urlencoded'},
-                                        body:'_glpi_csrf_token='+encodeURIComponent(d.token)+'&attachment_id='+att.id
-                                    });
-                                })
-                                .then(function(){ loadAttachments(); });
+                            fetch(root + '/ajax/delete_attachment.php', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/x-www-form-urlencoded',
+                                    'X-GLPI-CSRF-TOKEN': glpiCsrfToken()
+                                },
+                                body: 'attachment_id=' + att.id
+                            }).then(function(){ loadAttachments(); });
                         };
                         div.appendChild(del);
                         list.appendChild(div);
@@ -911,37 +918,37 @@ document.addEventListener('DOMContentLoaded', function () {
             upInput.addEventListener('change', function() {
                 var files = Array.from(this.files);
                 if (!files.length) return;
-                var status   = document.getElementById('swat-upload-status');
+                var status    = document.getElementById('swat-upload-status');
                 var failCount = 0;
                 status.textContent = 'Uploading ' + files.length + ' photo(s)...';
 
-                // Sequential uploads — each fetches its own CSRF token (tokens are single-use in GLPI)
+                // Token stays valid for all sequential uploads (GLPI_KEEP_CSRF_TOKEN).
                 function uploadNext(idx) {
                     if (idx >= files.length) {
-                        if (failCount === 0) {
-                            status.textContent = '✓ ' + files.length + ' photo(s) uploaded';
-                        } else {
-                            status.textContent = '✗ ' + failCount + ' failed of ' + files.length;
-                        }
+                        status.textContent = failCount === 0
+                            ? '✓ ' + files.length + ' photo(s) uploaded'
+                            : '✗ ' + failCount + ' failed of ' + files.length;
                         loadAttachments();
                         setTimeout(function(){ status.textContent = ''; }, 3500);
                         return;
                     }
-                    fetch(root + '/ajax/get_csrf.php')
-                        .then(function(r){ return r.json(); })
-                        .then(function(d) {
-                            var fd = new FormData();
-                            fd.append('image', files[idx]);
-                            fd.append('form_id', formId);
-                            fd.append('_glpi_csrf_token', d.token);
-                            return fetch(root + '/ajax/upload_image.php', { method:'POST', body: fd });
-                        })
-                        .then(function(r){ return r.json(); })
-                        .then(function(result){
-                            if (!result.success) failCount++;
-                            uploadNext(idx + 1);
-                        })
-                        .catch(function(){ failCount++; uploadNext(idx + 1); });
+                    var fd = new FormData();
+                    fd.append('image', files[idx]);
+                    fd.append('form_id', formId);
+                    fetch(root + '/ajax/upload_image.php', {
+                        method: 'POST',
+                        headers: { 'X-GLPI-CSRF-TOKEN': glpiCsrfToken() },
+                        body: fd
+                    })
+                    .then(function(r){ return r.json(); })
+                    .then(function(result){
+                        if (!result.success) {
+                            failCount++;
+                            console.error('Upload failed:', result.error, result.detail || '');
+                        }
+                        uploadNext(idx + 1);
+                    })
+                    .catch(function(e){ failCount++; uploadNext(idx + 1); });
                 }
                 uploadNext(0);
                 this.value = '';

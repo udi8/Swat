@@ -84,7 +84,6 @@ class PluginSwatProfile extends CommonDBTM {
         if ($can_edit) {
             global $CFG_GLPI;
             $ajax_url = $CFG_GLPI['root_doc'] . '/plugins/swat/ajax/saverights.php';
-            $csrf_url = $CFG_GLPI['root_doc'] . '/plugins/swat/ajax/get_csrf.php';
             // Save button
             echo '<div style="padding:12px 16px;">'
                . '<button type="button" id="swat-save-rights-btn"'
@@ -94,27 +93,29 @@ class PluginSwatProfile extends CommonDBTM {
             echo "<script>
             (function(){
                 var ajaxUrl = '{$ajax_url}';
-                var csrfUrl = '{$csrf_url}';
                 var pid     = '{$profiles_id}';
-                // Fetch a fresh single-use CSRF token then POST the rights for one field
+                // GLPI 10.0.6: /ajax/ endpoints read CSRF from X-GLPI-CSRF-TOKEN header.
+                // The token is NOT consumed (GLPI_KEEP_CSRF_TOKEN), so sequential calls
+                // with the same page-level token all succeed.
+                function glpiCsrfToken() {
+                    var m = document.querySelector('meta[property=\"glpi:csrf_token\"]');
+                    return m ? m.getAttribute('content') : '';
+                }
                 function saveField(field) {
-                    return fetch(csrfUrl)
-                        .then(function(r){ return r.json(); })
-                        .then(function(d) {
-                            var total = 0;
-                            document.querySelectorAll('.swat-right-cb[data-field=\"'+field+'\"]').forEach(function(c){
-                                if(c.checked) total |= parseInt(c.dataset.bit);
-                            });
-                            return fetch(ajaxUrl, {
-                                method:'POST',
-                                headers:{'Content-Type':'application/x-www-form-urlencoded'},
-                                body:'_glpi_csrf_token='+encodeURIComponent(d.token)
-                                    +'&profiles_id='+pid
-                                    +'&field='+encodeURIComponent(field)
-                                    +'&rights='+total
-                            });
-                        })
-                        .then(function(r){ return r.json(); });
+                    var total = 0;
+                    document.querySelectorAll('.swat-right-cb[data-field=\"'+field+'\"]').forEach(function(c){
+                        if(c.checked) total |= parseInt(c.dataset.bit);
+                    });
+                    return fetch(ajaxUrl, {
+                        method:'POST',
+                        headers:{
+                            'Content-Type':'application/x-www-form-urlencoded',
+                            'X-GLPI-CSRF-TOKEN': glpiCsrfToken()
+                        },
+                        body:'profiles_id='+pid
+                            +'&field='+encodeURIComponent(field)
+                            +'&rights='+total
+                    }).then(function(r){ return r.json(); });
                 }
                 document.getElementById('swat-save-rights-btn').addEventListener('click', function(){
                     var btn = this;

@@ -4,7 +4,7 @@ if (!Session::haveRight('plugin_swat_form', READ)) {
     http_response_code(403);
     echo json_encode(['success'=>false]); exit;
 }
-Session::checkCSRF($_POST);
+// CSRF auto-validated by GLPI bootstrap (csrf_compliant plugin)
 $att_id = (int)($_POST['attachment_id'] ?? 0);
 if (!$att_id) { echo json_encode(['success'=>false]); exit; }
 global $DB;

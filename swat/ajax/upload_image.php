@@ -5,7 +5,7 @@ if (!Session::haveRight('plugin_swat_form', READ)) {
     echo json_encode(['success'=>false,'error'=>'Forbidden']);
     exit;
 }
-Session::checkCSRF($_POST);
+// CSRF auto-validated by GLPI bootstrap (csrf_compliant plugin)
 $form_id = (int)($_POST['form_id'] ?? 0);
 if (!$form_id) { echo json_encode(['success'=>false,'error'=>'No form ID']); exit; }
 $file = $_FILES['image'] ?? null;

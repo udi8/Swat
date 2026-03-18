@@ -5,9 +5,11 @@
  */
 include('../../../inc/includes.php');
 
-if (!Session::haveRight('plugin_swat_form', READ)) {
+// Only require an active GLPI session — this token is consumed by GLPI's
+// own csrf_compliant bootstrap check on the subsequent POST request.
+if (empty($_SESSION['glpiID'])) {
     http_response_code(403);
-    echo json_encode(['error' => 'Forbidden']);
+    echo json_encode(['error' => 'Not logged in']);
     exit;
 }
 

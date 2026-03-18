@@ -21,6 +21,9 @@ function plugin_init_swat() {
     // Menu under Management
     $PLUGIN_HOOKS['menu_toadd']['swat'] = ['management' => 'PluginSwatDashboard'];
 
+    // Plugin configuration page (accessible via Administration > Plugins > SWAT > Configure)
+    $PLUGIN_HOOKS['config_page']['swat'] = 'front/config.form.php';
+
     if (isset($_SESSION['glpiID'])) {
         $PLUGIN_HOOKS['add_css']['swat']        = ['css/swat.css'];
         $PLUGIN_HOOKS['add_javascript']['swat'] = ['js/swat.js'];

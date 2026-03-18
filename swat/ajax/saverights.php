@@ -1,10 +1,10 @@
 <?php
 /**
  * SWAT Plugin - AJAX: Save profile rights
+ * Note: CSRF is auto-validated by GLPI bootstrap for csrf_compliant plugins.
  */
 include('../../../inc/includes.php');
 
-Session::checkCSRF($_POST);
 Session::checkRight('profile', UPDATE);
 
 header('Content-Type: application/json');
